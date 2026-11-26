@@ -8,7 +8,7 @@ const CFG = Object.assign({
   defaultLocation: [40.4168, -3.7038],
   orbsStart: 30, orbsMax: 100, stopCooldownMin: 5, autoParadas: true, stopViewRadius: 1500,
   coinsStart: 10, coinsPerHour: 1,
-  revealRadius: 90, radarRange: 4, hintRadius: 150
+  revealRadius: 90, radarRange: 4, hintRadius: 150, shinyRate: 1 / 200
 }, window.FOTOCAZA_CONFIG || {});
 
 const $ = s => document.querySelector(s);
@@ -20,15 +20,17 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>'
 // weight = probabilidad relativa de aparecer (cada una es más rara que la anterior)
 // catch = probabilidad base de captura · flee = probabilidad de huir al escaparse del orbe
 const RAR = {
-  comun:      { label: 'Común',      weight: 50,   catch: 0.85, flee: 0.05, xp: 100 },
+  comun:      { label: 'Común',      weight: 55,   catch: 0.85, flee: 0.05, xp: 100 },
   raro:       { label: 'Raro',       weight: 25,   catch: 0.65, flee: 0.10, xp: 200 },
-  superraro:  { label: 'Superraro',  weight: 12,   catch: 0.50, flee: 0.14, xp: 350 },
-  epico:      { label: 'Épico',      weight: 7,    catch: 0.40, flee: 0.18, xp: 600 },
-  legendario: { label: 'Legendario', weight: 3.5,  catch: 0.28, flee: 0.24, xp: 1200 },
-  mitico:     { label: 'Mítico',     weight: 1.6,  catch: 0.20, flee: 0.30, xp: 2000 },
-  astral:     { label: 'Astral',     weight: 0.7,  catch: 0.13, flee: 0.36, xp: 3500 },
-  secreto:    { label: 'Secreto',    weight: 0.2,  catch: 0.08, flee: 0.45, xp: 6000 }
+  superraro:  { label: 'Superraro',  weight: 11,   catch: 0.50, flee: 0.14, xp: 350 },
+  epico:      { label: 'Épico',      weight: 5,    catch: 0.40, flee: 0.18, xp: 600 },
+  legendario: { label: 'Legendario', weight: 2,    catch: 0.28, flee: 0.24, xp: 1200 },
+  mitico:     { label: 'Mítico',     weight: 0.7,  catch: 0.20, flee: 0.30, xp: 2000 },
+  astral:     { label: 'Astral',     weight: 0.25, catch: 0.13, flee: 0.36, xp: 3500 },
+  secreto:    { label: 'Secreto',    weight: 0.05, catch: 0.08, flee: 0.45, xp: 6000 }
 };
+// Se pueden ajustar desde config.js con rarityWeights: { legendario: 1, ... }
+for (const k in (CFG.rarityWeights || {})) if (RAR[k] && CFG.rarityWeights[k] >= 0) RAR[k].weight = +CFG.rarityWeights[k];
 const RAR_ORDER = Object.keys(RAR);
 // Nombres aceptados en archivos y carpetas (sin tildes, mayúsculas ni separadores)
 const RAR_ALIAS = {};
@@ -54,6 +56,9 @@ save = Object.assign({ caught: {}, first: {}, xp: 0, gone: {}, dev: false, cam: 
 save.items = Object.assign({ super: 0, ultra: 0, candy: 0, gold: 0 }, save.items);
 // Estadísticas para el perfil (en partidas antiguas, las capturas se estiman con lo que hay en el álbum)
 save.stats = Object.assign({ captures: Object.values(save.caught).reduce((a, n) => a + n, 0), hatched: 0, fused: 0 }, save.stats);
+save.shiny = save.shiny || {};            // brillantes conseguidas: { idCriatura: cuántas }
+save.barrios = save.barrios || {};        // maestría por barrio: { idBarrio: { name, muni, pts, captures, species, shinies } }
+save.barrioPending = save.barrioPending || []; // capturas que aún no se han podido asignar a un barrio (sin conexión)
 for (const k in save.gone) if (Date.now() - save.gone[k] > 864e5) delete save.gone[k];
 const persist = () => { save.savedAt = Date.now(); localStorage.setItem(SAVE_KEY, JSON.stringify(save)); cloudQueue(); };
 
@@ -210,6 +215,16 @@ function pickCreature(r) {
   return pool[Math.floor(r() * pool.length)];
 }
 
+// 1 de cada 200 es brillante. Se decide con su propio azar para que todos la vean igual.
+const isShiny = seed => seeded(seed)() < CFG.shinyRate;
+const cssUrl = u => `url("${String(u).replace(/["\\\n]/g, m => encodeURIComponent(m))}")`;
+const shinyHue = id => 60 + Math.floor(seeded('tono' + id)() * 240); // cada criatura brilla con su propio tono
+// Imagen de una criatura; si es brillante, con el efecto foil holográfico encima
+function creatureImg(c, shiny, attrs = '') {
+  const img = `<img src="${esc(c.url)}" alt="" draggable="false" ${attrs}>`;
+  return shiny ? `<span class="foil" style="--img:${esc(cssUrl(c.url))};--shue:${shinyHue(c.id)}deg">${img}</span>` : img;
+}
+
 function computeSpawns(pos, range = CFG.cellRange) {
   if (!creatures.length) return [];
   const cs = CFG.cellSize, cx0 = Math.floor(pos.lat / cs), cy0 = Math.floor(pos.lng / cs);
@@ -221,7 +236,7 @@ function computeSpawns(pos, range = CFG.cellRange) {
       for (let i = 0; i < n; i++) {
         const id = `${cx}_${cy}_${slot}_${i}`;
         const lat = (cx + r()) * cs, lng = (cy + r()) * cs, creature = pickCreature(r);
-        if (!save.gone[id]) out.push({ id, lat, lng, creature });
+        if (!save.gone[id]) out.push({ id, lat, lng, creature, shiny: isShiny('brillo' + id) });
       }
     }
   return out;
@@ -250,6 +265,7 @@ function setPlayer(lat, lng) {
   refreshSpawns();
   refreshStops();
   if (autoStops) OSM.asegurar(OSM.celdasAlrededor(lat, lng), refreshStops);
+  updateCurrentBarrio(lat, lng);
 }
 
 // ---------------------------------------------------------------- Paradas (recarga de orbes)
@@ -401,7 +417,7 @@ function fertilize(s, h) {
   save.coins -= cost;
   const now = Date.now();
   save.fert[s.id] = { start: now, ready: now + h * hourMs(), hours: h, cid: c.id, rarity: c.rarity,
-    lat: s.lat, lng: s.lng, nombre: s.nombre };
+    lat: s.lat, lng: s.lng, nombre: s.nombre, shiny: Math.random() < CFG.shinyRate };
   persist(); updateHud(); fertUI = null;
   toast(`🌱 Parada abonada. Vuelve en ${h} ${fertUnit()}`);
   updateStopPanel(); refreshStops();
@@ -409,7 +425,7 @@ function fertilize(s, h) {
 function fertSpawn(stopId) {
   const f = save.fert[stopId];
   const creature = creatures.find(c => c.id === f.cid) || creatures.find(c => c.rarity === f.rarity) || creatures[0];
-  return { id: 'fert_' + stopId, stopId, fert: true, lat: f.lat + 0.00012, lng: f.lng + 0.00012, creature };
+  return { id: 'fert_' + stopId, stopId, fert: true, lat: f.lat + 0.00012, lng: f.lng + 0.00012, creature, shiny: !!f.shiny };
 }
 const fertMarkers = new Map();
 function refreshFert() {
@@ -425,7 +441,7 @@ function refreshFert() {
     if (fertMarkers.has(id) || !seen(id)) continue;
     const sp = fertSpawn(id);
     const m = L.marker([sp.lat, sp.lng], { zIndexOffset: 800, icon: L.divIcon({ className: '', iconSize: [64, 64], iconAnchor: [32, 60],
-      html: `<div class="spawn fert r-${sp.creature.rarity}"><img src="${esc(sp.creature.url)}" alt="" draggable="false"></div>` }) }).addTo(map);
+      html: `<div class="spawn fert r-${sp.creature.rarity} ${sp.shiny ? 'shiny' : ''}">${creatureImg(sp.creature, sp.shiny)}</div>` }) }).addTo(map);
     m.on('click', () => tryEncounter(fertSpawn(id)));
     fertMarkers.set(id, m);
   }
@@ -494,7 +510,7 @@ function refreshSpawns() {
   for (const s of spawns) if (!markers.has(s.id)) {
     const m = L.marker([s.lat, s.lng], {
       icon: L.divIcon({ className: '', iconSize: [58, 58], iconAnchor: [29, 54],
-        html: `<div class="spawn reveal r-${s.creature.rarity}"><img src="${esc(s.creature.url)}" alt="" draggable="false"></div>` })
+        html: `<div class="spawn reveal r-${s.creature.rarity} ${s.shiny ? 'shiny' : ''}">${creatureImg(s.creature, s.shiny)}</div>` })
     }).addTo(map);
     m.spawn = s;
     m.on('click', () => tryEncounter(s));
@@ -514,7 +530,9 @@ function refreshSpawns() {
     .map(s => ({ ...s, d: distM(player, s) }))
     .sort((a, b) => RAR_ORDER.indexOf(b.creature.rarity) - RAR_ORDER.indexOf(a.creature.rarity) || a.d - b.d);
   renderRadar(rares);
-  setStatus(`${save.dev ? '<span class="dev">PRUEBA</span>' : ''}${near && !save.dev ? `✨ ${near} al alcance · ` : ''}👀 ${markers.size} a la vista`);
+  const bar = currentBarrio && currentBarrio.murcia && currentBarrio.name
+    ? `${MASTERY_ICON[masteryLevel(save.barrios[currentBarrio.id]?.pts || 0)]} ${esc(currentBarrio.name)} · ` : '';
+  setStatus(`${save.dev ? '<span class="dev">PRUEBA</span>' : ''}${bar}${near && !save.dev ? `✨ ${near} al alcance · ` : ''}👀 ${markers.size}`);
 }
 
 // ---------------------------------------------------------------- Rastreo de criaturas raras
@@ -542,7 +560,7 @@ function renderRadar(list) {
   $('#radarList').innerHTML = list.map(s => {
     const c = s.creature, secret = c.rarity === 'secreto' && !known(c);
     return `<button class="radar-item r-${c.rarity} ${s.id === radarSel ? 'on' : ''}" data-id="${esc(s.id)}" title="${esc(RAR[c.rarity].label)}">
-      ${secret ? '<i class="radar-q">?</i>' : `<img src="${esc(c.url)}" alt="" draggable="false">`}
+      ${secret ? '<i class="radar-q">?</i>' : `<span class="radar-sil"><img src="${esc(c.url)}" alt="" draggable="false"></span>`}
       <small>~${Math.max(100, Math.round(s.d / 100) * 100)} m</small></button>`;
   }).join('');
 }
@@ -563,8 +581,8 @@ $('#radarList').onclick = e => {
   follow = false;
   map.fitBounds(L.latLng(center).toBounds(CFG.hintRadius * 2).extend([player.lat, player.lng]),
     { paddingTopLeft: [40, 150], paddingBottomRight: [40, 130], maxZoom: 17 });
-  const secret = c.rarity === 'secreto' && !known(c);
-  toast(`${secret ? 'Algo secreto' : `${c.name} (${RAR[c.rarity].label})`} anda por esta zona. ¡Acércate para verlo!`, 4000);
+  // Sin desvelar qué es: solo su rareza (se ve su silueta)
+  toast(`Algo ${RAR[c.rarity].label.toLowerCase()} anda por esta zona. ¡Acércate para descubrir qué es!`, 4000);
 };
 
 function removeSpawn(s) {
@@ -696,7 +714,15 @@ function openCatch(spawn) {
   const c = spawn.creature, now = performance.now();
   cs = { spawn, cr: c, phase: 'aim', t0: now, throws: 0, last: 0, ringS: 1, jump: 0, nextJump: now + 1500, candy: 0 };
   cImg.src = c.url; cImg.className = 'appear';
-  target.className = `r-${c.rarity}`; arena.className = `r-${c.rarity}`; ring.style.opacity = ''; ringMax.style.opacity = '';
+  const cFoil = $('#cFoil');
+  target.classList.toggle('shiny', !!spawn.shiny);
+  cFoil.hidden = !spawn.shiny;
+  if (spawn.shiny) {
+    cFoil.style.setProperty('--img', cssUrl(c.url));
+    target.style.setProperty('--shue', shinyHue(c.id) + 'deg');
+    setTimeout(() => { if (cs && cs.spawn === spawn) { flash('✨ ¡Es brillante!', 1600); sfx.curve(); } }, 500);
+  }
+  target.className = `r-${c.rarity}${spawn.shiny ? ' shiny' : ''}`; arena.className = `r-${c.rarity}`; ring.style.opacity = ''; ringMax.style.opacity = '';
   target.classList.remove('candied'); $('#candyMenu').hidden = true;
   $('#catchName').innerHTML = `${esc(c.name)} <span class="tag r-${c.rarity}">${RAR[c.rarity].label}</span>
     <small>${esc(c.category || 'Otros')}${spawn.fert ? ' · 🌱 brotada' : ''}</small>`;
@@ -984,13 +1010,16 @@ async function success(token) {
   save.caught[c.id] = (save.caught[c.id] || 0) + 1;
   if (isNew) save.first[c.id] = Date.now();
   save.stats.captures++;
-  const gained = R.xp + (isNew ? 500 : 0);
+  const shiny = !!cs.spawn.shiny;
+  if (shiny) save.shiny[c.id] = (save.shiny[c.id] || 0) + 1;
+  creditBarrio({ lat: cs.spawn.lat, lng: cs.spawn.lng, cid: c.id, shiny });
+  const gained = R.xp + (isNew ? 500 : 0) + (shiny ? 1000 : 0);
   save.xp += gained;
   removeSpawn(cs.spawn);
   updateHud();
   await sleep(1600); if (cs !== token) return;
   closeCatch();
-  showCard(c, { isNew, gained, levelUp: levelOf(save.xp) > prevLvl });
+  showCard(c, { isNew, gained, levelUp: levelOf(save.xp) > prevLvl, shiny });
 }
 
 // Arrastrar, girar (curva) y lanzar el orbe
@@ -1181,11 +1210,12 @@ const known = c => !!(save.caught[c.id] || save.first[c.id]);
 function albumCell(c) {
   const n = save.caught[c.id] || 0, k = known(c);
   // Las secretas ni siquiera muestran la silueta hasta capturarlas
+  const sh = save.shiny[c.id] || 0;
   const pic = !k && c.rarity === 'secreto'
     ? '<div class="mystery">?</div>'
-    : `<img src="${esc(c.url)}" loading="lazy" alt="" draggable="false">`;
-  return `<button class="cell r-${c.rarity} ${k ? '' : 'unknown'} ${n >= FUSE_N ? 'fusable' : ''}" data-id="${esc(c.id)}" title="${k ? esc(RAR[c.rarity].label) : ''}">
-    ${pic}<span>${k ? esc(c.name) : '???'}</span>${k ? `<b>×${n}</b>` : ''}<i class="rdot"></i>${n >= FUSE_N ? '<i class="fuse-badge">🥚</i>' : ''}</button>`;
+    : creatureImg(c, sh > 0, 'loading="lazy"');
+  return `<button class="cell r-${c.rarity} ${k ? '' : 'unknown'} ${n >= FUSE_N ? 'fusable' : ''} ${sh ? 'has-shiny' : ''}" data-id="${esc(c.id)}" title="${k ? esc(RAR[c.rarity].label) + (sh ? ' · Brillante' : '') : ''}">
+    ${pic}<span>${k ? esc(c.name) : '???'}</span>${k ? `<b>×${n}</b>` : ''}<i class="rdot"></i>${n >= FUSE_N ? '<i class="fuse-badge">🥚</i>' : ''}${sh ? '<i class="shiny-badge">✨ Brillante</i>' : ''}</button>`;
 }
 function renderAlbum() {
   const got = list => list.filter(known).length;
@@ -1203,7 +1233,7 @@ function renderAlbum() {
     const list = groups.get(cat).sort((a, b) =>
       RAR_ORDER.indexOf(a.rarity) - RAR_ORDER.indexOf(b.rarity) || a.name.localeCompare(b.name, 'es'));
     return `<section class="album-sec" id="sec${i}">
-      <h3 class="album-h"><span>${esc(cat)}</span><span class="tag">${got(list)} / ${list.length}</span></h3>
+      <h3 class="album-h"><span>${esc(cat)}</span><span class="tag">${got(list)} / ${list.length}</span>${list.some(c => save.shiny[c.id]) ? `<span class="tag shiny-tag">✨ ${list.filter(c => save.shiny[c.id]).length}</span>` : ''}</h3>
       <div class="album-grid">${list.map(albumCell).join('')}</div></section>`;
   }).join('');
 }
@@ -1217,14 +1247,17 @@ $('#albumGrid').onclick = e => {
   showCard(c, {});
 };
 
-function showCard(c, { isNew, gained, levelUp, hatched }) {
+function showCard(c, { isNew, gained, levelUp, hatched, shiny }) {
   const n = save.caught[c.id] || 0, first = save.first[c.id];
   const card = $('#modalCard');
   card.className = `card r-${c.rarity}`;
   const canFuse = n >= FUSE_N && !gained;
-  card.innerHTML = `${hatched ? '<div class="new">¡HA ECLOSIONADO!</div>' : isNew ? '<div class="new">¡NUEVA CRIATURA!</div>' : ''}
-    <img src="${esc(c.url)}" alt="">
+  const ns = save.shiny[c.id] || 0;
+  card.innerHTML = `${shiny ? '<div class="new shiny-new">✨ ¡BRILLANTE! ✨</div>' : hatched ? '<div class="new">¡HA ECLOSIONADO!</div>' : isNew ? '<div class="new">¡NUEVA CRIATURA!</div>' : ''}
+    <div class="card-pic">${creatureImg(c, !!shiny)}</div>
     <h3>${esc(c.name)}</h3><span class="tag">${RAR[c.rarity].label}</span> <span class="tag cat">${esc(c.category || 'Otros')}</span>
+    ${shiny || ns ? '<span class="tag shiny-tag">✨ Brillante</span>' : ''}
+    ${ns && !shiny ? `<div class="shiny-owned">${creatureImg(c, true)}<span>Tienes su versión brillante${ns > 1 ? ` ×${ns}` : ''}</span></div>` : ''}
     <div class="stats">${gained ? `+${gained} XP<br>` : ''}${levelUp ? `<b>¡Subes a nivel ${levelOf(save.xp)}!</b><br>` : ''}
     Tienes ${n} ${n === 1 ? 'copia' : 'copias'}${first ? `<br>Primera vez: ${new Date(first).toLocaleDateString('es-ES')}` : ''}</div>
     ${canFuse ? `<button class="btn fuse">🥚 Fusionar ${FUSE_N} en un huevo</button>
@@ -1375,6 +1408,8 @@ async function hatch(egg) {
   save.caught[c.id] = (save.caught[c.id] || 0) + 1;
   if (!save.first[c.id]) save.first[c.id] = Date.now();
   save.stats.hatched++;
+  const shinyHatch = Math.random() < CFG.shinyRate;
+  if (shinyHatch) save.shiny[c.id] = (save.shiny[c.id] || 0) + 1;
   const gained = RAR[c.rarity].xp + (isNew ? 500 : 0) + 200;
   save.xp += gained;
   fillIncubators(); persist(); updateHud(); updateEggBadge(); renderEggs();
@@ -1387,7 +1422,7 @@ async function hatch(egg) {
   card.querySelector('.egg').classList.add('crack'); sfx.breakOut();
   await sleep(600);
   sfx.success();
-  showCard(c, { isNew, gained, levelUp: levelOf(save.xp) > prevLvl, hatched: true });
+  showCard(c, { isNew, gained, levelUp: levelOf(save.xp) > prevLvl, hatched: true, shiny: shinyHatch });
 }
 
 // ---------------------------------------------------------------- Paneles y ajustes
@@ -1416,7 +1451,7 @@ $('#btnReload').onclick = async () => {
 $('#btnReset').onclick = () => {
   if (!confirm('¿Seguro? Se borrarán tus capturas y tu experiencia.')) return;
   save.caught = {}; save.first = {}; save.xp = 0; save.gone = {};
-  save.orbs = CFG.orbsStart; save.stops = {}; save.visited = {}; save.coins = CFG.coinsStart; save.fert = {}; save.eggs = []; save.walked = 0; save.items = { super: 0, ultra: 0, candy: 0, gold: 0 }; save.ball = 'orb'; save.stats = { captures: 0, hatched: 0, fused: 0 }; persist(); updateEggBadge();
+  save.orbs = CFG.orbsStart; save.stops = {}; save.visited = {}; save.coins = CFG.coinsStart; save.fert = {}; save.eggs = []; save.walked = 0; save.items = { super: 0, ultra: 0, candy: 0, gold: 0 }; save.ball = 'orb'; save.stats = { captures: 0, hatched: 0, fused: 0 }; save.shiny = {}; save.barrios = {}; save.barrioPending = []; persist(); updateEggBadge();
   updateHud(); refreshSpawns(); refreshStops(); toast('Progreso borrado');
 };
 
@@ -1560,7 +1595,8 @@ function profileStats() {
     .sort((a, b) => RAR_ORDER.indexOf(b.rarity) - RAR_ORDER.indexOf(a.rarity))[0];
   return { level: levelOf(save.xp), xp: save.xp, discovered: ids.length, total: creatures.length,
     captures: save.stats.captures, hatched: save.stats.hatched, fused: save.stats.fused,
-    km: Math.round(save.walked * 100) / 100, stops: Object.keys(save.visited).length, best: best ? best.id : null };
+    km: Math.round(save.walked * 100) / 100, stops: Object.keys(save.visited).length, best: best ? best.id : null,
+    shinies: Object.keys(save.shiny).length, barrios: Object.keys(save.barrios).length };
 }
 async function loadMyProfile(u) {
   try {
@@ -1600,6 +1636,8 @@ function statsHtml(st = {}) {
     ${cell(st.hatched ?? 0, 'Huevos abiertos')}
     ${cell(String(st.km ?? 0).replace('.', ','), 'Km andados')}
     ${cell(st.stops ?? 0, 'Paradas')}
+    ${cell(st.shinies ?? 0, '✨ Brillantes')}
+    ${cell(st.barrios ?? 0, 'Barrios')}
     </div>
     ${best ? `<div class="pbest">La más rara: <img src="${esc(best.url)}" alt=""> <b>${esc(best.name)}</b> <span class="tag r-${best.rarity}">${RAR[best.rarity].label}</span></div>` : ''}`;
 }
@@ -1713,6 +1751,113 @@ function editProfile() {
 }
 $('.level').onclick = openSocial;
 
+// ---------------------------------------------------------------- Maestría de barrios (Región de Murcia)
+// Cada captura suma puntos al barrio/pedanía donde ocurre: +1 por captura, +1 si es una especie nueva
+// en ese barrio, +5 si es brillante. Al subir de nivel el barrio da todocoins.
+const MASTERY = [
+  { n: 'Sin explorar', pts: 0, coins: 0 }, { n: 'Explorador', pts: 1, coins: 0 }, { n: 'Bronce', pts: 10, coins: 5 },
+  { n: 'Plata', pts: 30, coins: 10 }, { n: 'Oro', pts: 70, coins: 20 }, { n: 'Platino', pts: 150, coins: 35 },
+  { n: 'Diamante', pts: 300, coins: 50 }, { n: 'Leyenda', pts: 600, coins: 100 }
+];
+const MASTERY_ICON = ['📍', '🧭', '🥉', '🥈', '🥇', '💠', '💎', '👑'];
+const masteryLevel = pts => MASTERY.reduce((l, m, i) => pts >= m.pts ? i : l, 0);
+let currentBarrio = null, barrioCellKey = '';
+
+let barrioLastAsk = 0;
+async function updateCurrentBarrio(lat, lng) {
+  const k = `${lat.toFixed(3)}_${lng.toFixed(3)}`;
+  if (k === barrioCellKey) return;
+  // Como mucho una consulta por minuto mientras andas (lo ya consultado sale de la caché al momento)
+  const cached = localStorage.getItem('fotocaza_barrio_' + k);
+  if (!cached && Date.now() - barrioLastAsk < 60e3) return;
+  if (!cached) barrioLastAsk = Date.now();
+  barrioCellKey = k;
+  try {
+    const b = await OSM.barrio(lat, lng);
+    if (barrioCellKey !== k) return;
+    const changed = (currentBarrio && currentBarrio.id) !== (b && b.id);
+    currentBarrio = b;
+    if (changed && b.murcia && b.name) toast(`🏘️ Estás en ${b.name}${b.muni && b.muni !== b.name ? ` (${b.muni})` : ''}`, 2500);
+    refreshSpawns();
+    if (!$('#barrios').hidden) renderBarrios();
+  } catch (e) { barrioCellKey = ''; }  // se reintentará en el próximo movimiento
+}
+
+async function creditBarrio(ev) {
+  let b;
+  try { b = await OSM.barrio(ev.lat, ev.lng); }
+  catch { save.barrioPending.push(ev); persist(); return; }      // sin conexión: se asigna más tarde
+  if (!b.murcia || !b.id) return;                                 // fuera de la Región de Murcia no cuenta
+  const rec = save.barrios[b.id] || (save.barrios[b.id] = { name: b.name, muni: b.muni, pts: 0, captures: 0, species: {}, shinies: 0 });
+  const prev = masteryLevel(rec.pts);
+  let gain = 1;
+  rec.captures++;
+  if (!rec.species[ev.cid]) { rec.species[ev.cid] = 1; gain += 1; }
+  if (ev.shiny) { rec.shinies++; gain += 5; }
+  rec.pts += gain;
+  const lvl = masteryLevel(rec.pts);
+  if (lvl > prev) {
+    const m = MASTERY[lvl];
+    save.coins += m.coins;
+    setTimeout(() => {
+      toast(`${MASTERY_ICON[lvl]} ¡${rec.name} sube a ${m.n}!${m.coins ? ` +${m.coins} todocoins` : ''}`, 5000);
+      sfx.success();
+    }, 2600);
+  }
+  persist(); updateHud(); refreshSpawns();
+  if (!$('#barrios').hidden) renderBarrios();
+}
+// Reintentar las capturas pendientes de asignar (de una en una)
+setInterval(async () => {
+  if (!save.barrioPending.length || !navigator.onLine) return;
+  const ev = save.barrioPending.shift(); persist();
+  await creditBarrio(ev);
+}, 60000);
+
+function barrioRowHtml(id, r, here) {
+  const lvl = masteryLevel(r.pts), next = MASTERY[lvl + 1], cur = MASTERY[lvl];
+  const pct = next ? Math.min(100, 100 * (r.pts - cur.pts) / (next.pts - cur.pts)) : 100;
+  return `<div class="brow nested lvl-${lvl} ${here ? 'here' : ''}">
+    <span class="bicon">${MASTERY_ICON[lvl]}</span>
+    <div class="binfo"><b>${esc(r.name)}</b>${here ? ' <span class="tag">Estás aquí</span>' : ''}
+      <div class="muted">${cur.n} · ${r.pts} pts${next ? ` · ${next.pts - r.pts} para ${next.n}` : ' · ¡nivel máximo!'}</div>
+      <div class="bar"><i style="width:${pct.toFixed(0)}%"></i></div>
+      <small class="muted">${r.captures} capturas · ${Object.keys(r.species).length} especies${r.shinies ? ` · ✨ ${r.shinies}` : ''}</small>
+    </div></div>`;
+}
+function renderBarrios() {
+  const box = $('#barriosBody'), cb = currentBarrio;
+  const entries = Object.entries(save.barrios);
+  const total = entries.reduce((a, [, r]) => a + r.pts, 0);
+  let head = '';
+  if (cb && cb.murcia && cb.id) {
+    head = `<div class="sec-h">Estás en</div>${barrioRowHtml(cb.id, save.barrios[cb.id] || { name: cb.name, pts: 0, captures: 0, species: {}, shinies: 0 }, true)}`;
+  } else if (cb && !cb.murcia) {
+    head = '<div class="empty">Ahora mismo no estás en la Región de Murcia: aquí las capturas no suman maestría.</div>';
+  } else {
+    head = '<div class="muted" style="margin:0 2px 10px">Buscando en qué barrio estás…</div>';
+  }
+  const byMuni = new Map();
+  for (const [id, r] of entries) {
+    if (!byMuni.has(r.muni)) byMuni.set(r.muni, []);
+    byMuni.get(r.muni).push([id, r]);
+  }
+  const munis = [...byMuni.keys()].sort((a, b) => a.localeCompare(b, 'es'));
+  box.innerHTML = head + `
+    <div class="bsum nested"><div><b>${entries.length}</b><span>barrios explorados</span></div>
+      <div><b>${total}</b><span>puntos de maestría</span></div>
+      <div><b>${entries.filter(([, r]) => masteryLevel(r.pts) >= 4).length}</b><span>en Oro o más</span></div></div>
+    ${munis.length ? munis.map(m => `<div class="sec-h">${esc(m)}</div>` + byMuni.get(m)
+      .sort((a, b) => b[1].pts - a[1].pts).map(([id, r]) => barrioRowHtml(id, r, cb && cb.id === id)).join('')).join('')
+      : '<div class="empty">Captura criaturas en la Región de Murcia para empezar a dominar barrios.</div>'}
+    <div class="help" style="margin-top:14px"><b>¿Cómo sube un barrio?</b>
+      <p>+1 punto por captura · +1 si es una especie nueva en ese barrio · +5 si es brillante.</p>
+      <p>${MASTERY.slice(1).map((m, i) => `${MASTERY_ICON[i + 1]} ${m.n} (${m.pts})`).join(' · ')}. Cada nivel nuevo da todocoins.</p></div>`;
+}
+function openBarrios() { renderBarrios(); $('#barrios').hidden = false; if (player) updateCurrentBarrio(player.lat, player.lng); }
+$('#status').onclick = openBarrios;
+$('#btnBarrios').onclick = () => { $('#album').hidden = true; openBarrios(); };
+
 // ---------------------------------------------------------------- Arranque
 updateHud();
 updateEggBadge();
@@ -1729,5 +1874,5 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
   navigator.serviceWorker.register('sw.js').catch(() => {});
 
 // Para pruebas desde la consola
-window.fotocaza = { save, parse: parseCreature, _social: { openSocial, loadMyProfile }, get creatures() { return creatures; }, openCatch, throwOrb: (vx, vy) => cs && throwOrb(vx, vy), get state() { return cs; } };
+window.fotocaza = { save, parse: parseCreature, _social: { openSocial, loadMyProfile }, _barrio: { creditBarrio, openBarrios, updateCurrentBarrio }, get creatures() { return creatures; }, openCatch, throwOrb: (vx, vy) => cs && throwOrb(vx, vy), get state() { return cs; } };
 })();

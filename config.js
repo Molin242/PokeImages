@@ -14,6 +14,11 @@ window.FOTOCAZA_CONFIG = {
   cellSize: 0.0015,   // tamaño de cada "zona" de aparición (~165 m)
   cellRange: 2,       // cuántas zonas alrededor del jugador se generan
   slotMinutes: 15,    // cada cuántos minutos cambian las apariciones
+  // Lo frecuente que sale cada rareza (números relativos: más alto = más frecuente).
+  // Más o menos: común 1 de cada 2 · raro 1/4 · superraro 1/9 · épico 1/20 · legendario 1/50
+  //              mítico 1/140 · astral 1/400 · secreto 1/2000
+  shinyRate: 1 / 200,  // probabilidad de que una criatura salga brillante
+  rarityWeights: { comun: 55, raro: 25, superraro: 11, epico: 5, legendario: 2, mitico: 0.7, astral: 0.25, secreto: 0.05 },
   defaultLocation: [40.4168, -3.7038], // posición si no hay GPS (Madrid)
 
   // Orbes y paradas
