@@ -15,7 +15,7 @@ imagen nueva a la carpeta `imagenes/`, aparece en el juego para todos.
 
 1. Crea un repositorio **público** en GitHub (por ejemplo `fotocaza`).
 2. Sube todos estos archivos a la raíz del repositorio (`index.html`, `app.js`, `osm.js`, `style.css`, `config.js`,
-   `sw.js`, `manifest.webmanifest`, `icon.svg`, `editor.html`, `editor.js`, `paradas.json` y la carpeta `imagenes/`).
+   `sw.js`, `manifest.webmanifest`, `icon.svg`, `editor.html`, `editor.js`, `paradas.json`, `cloud.js`, `firebase-reglas.txt` y la carpeta `imagenes/`).
 3. En el repositorio: **Settings → Pages → Source: Deploy from a branch → `main` / `(root)` → Save**.
 4. En un par de minutos la app estará en `https://TU-USUARIO.github.io/fotocaza/`.
 5. Ábrela en el móvil y, en el menú del navegador, pulsa **"Añadir a pantalla de inicio"** / **"Instalar app"**.
@@ -57,6 +57,17 @@ Los PNG con fondo transparente quedan mucho mejor. Las imágenes nuevas tardan h
 (o pulsa **Ajustes → Recargar**).
 
 Mientras la carpeta esté vacía, la app usa unas criaturas de demostración.
+
+## Cómo encontrar criaturas
+
+- Las criaturas están repartidas por todo el mapa, pero **solo las ves cuando estás cerca** (a unos 90 m).
+  Hay que salir a explorar.
+- Las de rareza **épica o mejor** que haya por la zona (hasta ~700 m) salen en la barra **📡 Raras por la zona**,
+  arriba, con su distancia aproximada. Pulsa una y el mapa marca un **círculo de ~150 m** por donde anda
+  (no su punto exacto). Cuando te acerques lo bastante, aparecerá y te avisará.
+- Las secretas salen en la barra como «?» hasta que captures una.
+- Las **paradas se ven siempre**, estés donde estés.
+- Las distancias se cambian en `config.js` (`revealRadius`, `radarRange`, `hintRadius`).
 
 ## Cómo capturar
 
@@ -104,6 +115,26 @@ Cada lanzamiento gasta un **orbe** (empiezas con 30). Para conseguir más, ve a 
 (los postes azules con foto), tócala cuando estés cerca y pulsa **Recoger orbes**: te da de 3 a 5 orbes
 (más en la primera visita) y experiencia. Después se pone morada y se recarga a los 5 minutos.
 
+### Tienda
+
+Botón de la bolsa en la barra inferior (o toca el contador de orbes y todocoins de arriba). Se paga con todocoins:
+
+| Artículo | Precio | Efecto |
+|---|---|---|
+| 10 orbes | 6 | Orbes normales |
+| 30 orbes | 15 | Pack grande, más barato |
+| 5 superorbes | 12 | ×1,5 de probabilidad de captura |
+| 3 ultraorbes | 15 | ×2 de probabilidad de captura |
+| 3 caramelos | 6 | ×1,5 en el siguiente intento |
+| 1 caramelo dorado | 8 | ×2,5 en el siguiente intento |
+
+En la captura:
+- **Cambiar de orbe:** toca el contador de la derecha (Orbe → Superorbe → Ultraorbe). El orbe cambia de color.
+- **Dar un caramelo:** botón 🍬 de la izquierda. La criatura brilla en rosa y el efecto dura hasta que el orbe la golpee
+  (aciertes o se escape). Si fallas el lanzamiento, el caramelo sigue activo.
+- El **color del anillo** se recalcula con el orbe y el caramelo: así ves cuánto te ayudan.
+- Todo se multiplica: rareza × anillo (Bien/Genial/Excelente) × curva × orbe × caramelo (máximo 97 %).
+
 ### Todocoins y abono
 
 Las paradas también dan **todocoins** (2 a 4 por visita, 5 más la primera vez; empiezas con 10).
@@ -134,6 +165,47 @@ Abre `https://TU-USUARIO.github.io/fotocaza/editor.html` en el ordenador. Tambi�
 
 El editor recuerda tu trabajo en ese ordenador aunque cierres la pestaña.
 `paradas.json` trae de ejemplo algunas paradas en el centro de Madrid: bórralas o cámbialas a tu gusto.
+
+## Cuentas con Google (guardar la partida en la nube)
+
+Opcional. Si lo configuras, en **Ajustes** aparece **Iniciar sesión con Google**: la partida se guarda sola en tu
+cuenta y puedes seguir en otro móvil. Si en el móvil ya había otra partida, el juego pregunta cuál quedarse.
+
+Se usa **Firebase** (de Google, gratis para un proyecto así). Solo se guarda la partida, ligada al identificador
+interno de la cuenta; ni el nombre ni el correo se guardan en la base de datos. Como son datos de compañeros,
+coméntalo antes con el profe.
+
+**Configurarlo (unos 10 minutos):**
+
+1. Entra en <https://console.firebase.google.com> con tu cuenta de Google → **Crear un proyecto** (por ejemplo
+   `fotocaza`). Google Analytics no hace falta.
+2. Menú izquierdo → **Authentication** → **Comenzar** → pestaña **Método de acceso** → **Google** → actívalo,
+   elige tu correo de asistencia → **Guardar**.
+3. En **Authentication → Configuración → Dominios autorizados** → **Agregar dominio** → `TU-USUARIO.github.io`.
+4. Menú izquierdo → **Firestore Database** → **Crear base de datos** → ubicación en Europa (por ejemplo `eur3`)
+   → **modo de producción**.
+5. En Firestore → pestaña **Reglas** → borra lo que hay, pega el contenido de `firebase-reglas.txt` → **Publicar**.
+6. Rueda ⚙️ → **Configuración del proyecto** → abajo, en **Tus apps**, pulsa el icono web **</>** → ponle un nombre
+   (sin Firebase Hosting) → **Registrar app**. Te enseñará un bloque `firebaseConfig`.
+7. Copia `apiKey`, `authDomain`, `projectId` y `appId` en `config.js`, en el apartado `firebase` (quita las `//`
+   del ejemplo), y sube `config.js` a GitHub.
+
+Esos datos **no son secretos** (Firebase está pensado para que vayan en la web): lo que protege las partidas son
+las reglas del paso 5, que solo dejan a cada uno leer y escribir la suya.
+
+### Jugadores (perfiles de amigos)
+
+Con la sesión iniciada, toca tu **nivel** (arriba a la izquierda, el círculo con 👥) o **Ajustes → 👥 Jugadores**:
+
+- **Tu perfil:** apodo, una frase y tus **3 criaturas favoritas** (la primera es tu foto). Se edita con **Editar perfil**.
+- **Estadísticas** automáticas: nivel, criaturas descubiertas, capturas, huevos abiertos, km andados, paradas y tu criatura más rara.
+- **Clasificación** de todos los que han iniciado sesión, ordenada por experiencia. Toca a un amigo para ver su perfil.
+
+El perfil (apodo, frase, favoritas y estadísticas) lo puede ver **cualquiera que inicie sesión en el juego**; la partida
+completa sigue siendo privada. Por defecto el apodo es tu nombre de pila de Google: cámbialo si prefieres otro.
+
+> ⚠️ Si ya configuraste Firebase antes de que existieran los perfiles, **vuelve a pegar las reglas**:
+> Firestore → **Reglas** → borra todo → pega el contenido nuevo de `firebase-reglas.txt` → **Publicar**.
 
 ## Ajustes (`config.js`)
 

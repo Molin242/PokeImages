@@ -7,7 +7,8 @@ const CFG = Object.assign({
   catchRadius: 60, cellSize: 0.0015, cellRange: 2, slotMinutes: 15,
   defaultLocation: [40.4168, -3.7038],
   orbsStart: 30, orbsMax: 100, stopCooldownMin: 5, autoParadas: true, stopViewRadius: 1500,
-  coinsStart: 10, coinsPerHour: 1
+  coinsStart: 10, coinsPerHour: 1,
+  revealRadius: 90, radarRange: 4, hintRadius: 150
 }, window.FOTOCAZA_CONFIG || {});
 
 const $ = s => document.querySelector(s);
@@ -49,9 +50,12 @@ const SAVE_KEY = 'fotocaza_v1';
 let save;
 try { save = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}'); } catch { save = {}; }
 save = Object.assign({ caught: {}, first: {}, xp: 0, gone: {}, dev: false, cam: false,
-  orbs: CFG.orbsStart, stops: {}, visited: {}, coins: CFG.coinsStart, fert: {}, sound: true, eggs: [], walked: 0 }, save);
+  orbs: CFG.orbsStart, stops: {}, visited: {}, coins: CFG.coinsStart, fert: {}, sound: true, eggs: [], walked: 0, items: {}, ball: 'orb' }, save);
+save.items = Object.assign({ super: 0, ultra: 0, candy: 0, gold: 0 }, save.items);
+// Estadísticas para el perfil (en partidas antiguas, las capturas se estiman con lo que hay en el álbum)
+save.stats = Object.assign({ captures: Object.values(save.caught).reduce((a, n) => a + n, 0), hatched: 0, fused: 0 }, save.stats);
 for (const k in save.gone) if (Date.now() - save.gone[k] > 864e5) delete save.gone[k];
-const persist = () => localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+const persist = () => { save.savedAt = Date.now(); localStorage.setItem(SAVE_KEY, JSON.stringify(save)); cloudQueue(); };
 
 // ---------------------------------------------------------------- Utilidades
 function seeded(str) { // generador pseudoaleatorio determinista (igual para todos los jugadores)
@@ -206,12 +210,12 @@ function pickCreature(r) {
   return pool[Math.floor(r() * pool.length)];
 }
 
-function computeSpawns(pos) {
+function computeSpawns(pos, range = CFG.cellRange) {
   if (!creatures.length) return [];
   const cs = CFG.cellSize, cx0 = Math.floor(pos.lat / cs), cy0 = Math.floor(pos.lng / cs);
   const slot = Math.floor(Date.now() / (CFG.slotMinutes * 60e3)), out = [];
-  for (let dx = -CFG.cellRange; dx <= CFG.cellRange; dx++)
-    for (let dy = -CFG.cellRange; dy <= CFG.cellRange; dy++) {
+  for (let dx = -range; dx <= range; dx++)
+    for (let dy = -range; dy <= range; dy++) {
       const cx = cx0 + dx, cy = cy0 + dy, r = seeded(`${cx}|${cy}|${slot}|${creatures.length}`);
       const n = Math.floor(r() * 3); // 0, 1 o 2 por zona
       for (let i = 0; i < n; i++) {
@@ -270,12 +274,11 @@ async function loadParadas() {
 
 function visibleStops() {
   if (!player) return [];
-  const near = s => distM(player, s) <= CFG.stopViewRadius;
-  const custom = customStops.filter(near);
+  // Las paradas se ven siempre, estés donde estés
   let auto = [];
   if (autoStops) auto = OSM.enCeldas(OSM.celdasAlrededor(player.lat, player.lng))
-    .filter(s => near(s) && !hiddenStops.has(s.id) && customStops.every(c => OSM.metros(c, s) > 40));
-  return custom.concat(auto);
+    .filter(s => !hiddenStops.has(s.id) && customStops.every(c => OSM.metros(c, s) > 40));
+  return customStops.concat(auto);
 }
 
 function stopHtml(s) {
@@ -411,12 +414,15 @@ function fertSpawn(stopId) {
 const fertMarkers = new Map();
 function refreshFert() {
   const now = Date.now();
-  for (const [id, m] of fertMarkers) if (!save.fert[id] || save.fert[id].ready > now) { map.removeLayer(m); fertMarkers.delete(id); }
+  const seen = id => player && distM(player, fertSpawn(id)) <= CFG.revealRadius;
+  for (const [id, m] of fertMarkers)
+    if (!save.fert[id] || save.fert[id].ready > now || !seen(id)) { map.removeLayer(m); fertMarkers.delete(id); }
   if (!creatures.length) return;
   for (const id in save.fert) {
     const f = save.fert[id];
-    if (f.ready > now || fertMarkers.has(id)) continue;
-    if (!f.notified) { f.notified = true; persist(); toast(`✨ ¡Ha brotado algo en ${f.nombre}!`, 4500); }
+    if (f.ready > now) continue;
+    if (!f.notified) { f.notified = true; persist(); toast(`✨ ¡Ha brotado algo en ${f.nombre}! Ve a la parada para verlo.`, 4500); }
+    if (fertMarkers.has(id) || !seen(id)) continue;
     const sp = fertSpawn(id);
     const m = L.marker([sp.lat, sp.lng], { zIndexOffset: 800, icon: L.divIcon({ className: '', iconSize: [64, 64], iconAnchor: [32, 60],
       html: `<div class="spawn fert r-${sp.creature.rarity}"><img src="${esc(sp.creature.url)}" alt="" draggable="false"></div>` }) }).addTo(map);
@@ -479,18 +485,21 @@ $('#stopDisc').onclick = collectStop;
 $('#stopClose').onclick = closeStop;
 stopPanel.onclick = e => { if (e.target === stopPanel) closeStop(); };
 
+// Las criaturas existen aunque estén lejos, pero solo aparecen en el mapa cuando estás cerca.
 function refreshSpawns() {
   if (!player) return;
-  const spawns = computeSpawns(player), ids = new Set(spawns.map(s => s.id));
+  const spawns = computeSpawns(player, 1).filter(s => distM(player, s) <= CFG.revealRadius);
+  const ids = new Set(spawns.map(s => s.id));
   for (const [id, m] of markers) if (!ids.has(id)) { map.removeLayer(m); markers.delete(id); }
   for (const s of spawns) if (!markers.has(s.id)) {
     const m = L.marker([s.lat, s.lng], {
       icon: L.divIcon({ className: '', iconSize: [58, 58], iconAnchor: [29, 54],
-        html: `<div class="spawn r-${s.creature.rarity}"><img src="${esc(s.creature.url)}" alt="" draggable="false"></div>` })
+        html: `<div class="spawn reveal r-${s.creature.rarity}"><img src="${esc(s.creature.url)}" alt="" draggable="false"></div>` })
     }).addTo(map);
     m.spawn = s;
     m.on('click', () => tryEncounter(s));
     markers.set(s.id, m);
+    if (radarSel === s.id) { toast(`✨ ¡${s.creature.name} está aquí mismo!`, 3500); clearRadarSel(); }
   }
   let near = 0;
   for (const m of markers.values()) {
@@ -498,8 +507,65 @@ function refreshSpawns() {
     if (isNear) near++;
     m.getElement()?.firstElementChild?.classList.toggle('near', isNear && !save.dev);
   }
-  setStatus(`${save.dev ? '<span class="dev">PRUEBA</span>' : ''}${near && !save.dev ? `✨ ${near} al alcance · ` : ''}${markers.size} cerca`);
+  // Rastreo: criaturas épicas o mejores por la zona que aún no se ven
+  const minR = RAR_ORDER.indexOf('epico');
+  const rares = computeSpawns(player, CFG.radarRange)
+    .filter(s => RAR_ORDER.indexOf(s.creature.rarity) >= minR && !ids.has(s.id))
+    .map(s => ({ ...s, d: distM(player, s) }))
+    .sort((a, b) => RAR_ORDER.indexOf(b.creature.rarity) - RAR_ORDER.indexOf(a.creature.rarity) || a.d - b.d);
+  renderRadar(rares);
+  setStatus(`${save.dev ? '<span class="dev">PRUEBA</span>' : ''}${near && !save.dev ? `✨ ${near} al alcance · ` : ''}👀 ${markers.size} a la vista`);
 }
+
+// ---------------------------------------------------------------- Rastreo de criaturas raras
+const RC = { comun: '#5cc23a', raro: '#1ea7ff', superraro: '#00bfae', epico: '#a855f7', legendario: '#ffb300',
+  mitico: '#ff2d92', astral: '#5b6cff', secreto: '#3a3a48' };
+let radarSel = null, radarCircle = null, radarKey = '', radarList = [];
+function hintCenter(s) {
+  // Centro desplazado al azar (siempre igual para cada criatura) para que la zona no delate el punto exacto
+  const r = seeded('pista' + s.id), ang = r() * Math.PI * 2, off = (0.15 + r() * 0.5) * CFG.hintRadius;
+  return { lat: s.lat + off * Math.cos(ang) / 111320, lng: s.lng + off * Math.sin(ang) / (111320 * Math.cos(s.lat * Math.PI / 180)) };
+}
+function clearRadarSel() {
+  radarSel = null;
+  if (radarCircle) { map.removeLayer(radarCircle); radarCircle = null; }
+  document.querySelectorAll('.radar-item.on').forEach(b => b.classList.remove('on'));
+}
+function renderRadar(list) {
+  radarList = list;
+  if (radarSel && !list.some(s => s.id === radarSel)) clearRadarSel();
+  const key = list.map(s => s.id + ':' + Math.round(s.d / 100)).join('|') + '|' + radarSel;
+  if (key === radarKey) return;
+  radarKey = key;
+  const box = $('#radar');
+  box.hidden = !list.length;
+  $('#radarList').innerHTML = list.map(s => {
+    const c = s.creature, secret = c.rarity === 'secreto' && !known(c);
+    return `<button class="radar-item r-${c.rarity} ${s.id === radarSel ? 'on' : ''}" data-id="${esc(s.id)}" title="${esc(RAR[c.rarity].label)}">
+      ${secret ? '<i class="radar-q">?</i>' : `<img src="${esc(c.url)}" alt="" draggable="false">`}
+      <small>~${Math.max(100, Math.round(s.d / 100) * 100)} m</small></button>`;
+  }).join('');
+}
+$('#radarList').onclick = e => {
+  const b = e.target.closest('.radar-item'); if (!b) return;
+  if (radarSel === b.dataset.id) { clearRadarSel(); return; }
+  const s = radarList.find(x => x.id === b.dataset.id); if (!s) return;
+  clearRadarSel();
+  radarSel = s.id; b.classList.add('on');
+  const c = s.creature, center = hintCenter(s), col = RC[c.rarity];
+  const secretIcon = c.rarity === 'secreto' && !known(c);
+  radarCircle = L.layerGroup([
+    L.circle(center, { radius: CFG.hintRadius, color: col, weight: 4, dashArray: '10 8',
+      fillColor: col, fillOpacity: 0.22, interactive: false, className: 'hint-zone' }),
+    L.marker(center, { interactive: false, zIndexOffset: 900, icon: L.divIcon({ className: '', iconSize: [56, 56],
+      html: `<div class="hint-pin r-${c.rarity}">${secretIcon ? '' : `<img src="${esc(c.url)}" alt="">`}<b>?</b></div>` }) })
+  ]).addTo(map);
+  follow = false;
+  map.fitBounds(L.latLng(center).toBounds(CFG.hintRadius * 2).extend([player.lat, player.lng]),
+    { paddingTopLeft: [40, 150], paddingBottomRight: [40, 130], maxZoom: 17 });
+  const secret = c.rarity === 'secreto' && !known(c);
+  toast(`${secret ? 'Algo secreto' : `${c.name} (${RAR[c.rarity].label})`} anda por esta zona. ¡Acércate para verlo!`, 4000);
+};
 
 function removeSpawn(s) {
   if (s.fert) { // criatura brotada: se termina el abono de esa parada
@@ -628,12 +694,10 @@ function quake() { catchEl.classList.remove('quake'); void catchEl.offsetWidth; 
 
 function openCatch(spawn) {
   const c = spawn.creature, now = performance.now();
-  cs = { spawn, cr: c, phase: 'aim', t0: now, throws: 0, last: 0, ringS: 1, jump: 0, nextJump: now + 1500 };
+  cs = { spawn, cr: c, phase: 'aim', t0: now, throws: 0, last: 0, ringS: 1, jump: 0, nextJump: now + 1500, candy: 0 };
   cImg.src = c.url; cImg.className = 'appear';
   target.className = `r-${c.rarity}`; arena.className = `r-${c.rarity}`; ring.style.opacity = ''; ringMax.style.opacity = '';
-  // Color del anillo según lo difícil que es: verde, amarillo, naranja, rojo
-  const p = RAR[c.rarity].catch;
-  target.style.setProperty('--dc', p >= 0.6 ? '#34c759' : p >= 0.4 ? '#ffd60a' : p >= 0.2 ? '#ff9f0a' : '#ff3b30');
+  target.classList.remove('candied'); $('#candyMenu').hidden = true;
   $('#catchName').innerHTML = `${esc(c.name)} <span class="tag r-${c.rarity}">${RAR[c.rarity].label}</span>
     <small>${esc(c.category || 'Otros')}${spawn.fert ? ' · 🌱 brotada' : ''}</small>`;
   catchEl.hidden = false; cMsg.classList.remove('show'); document.body.classList.add('catching');
@@ -729,18 +793,21 @@ function resetOrb(animated) {
   if (!cs) return;
   cs.phase = 'aim'; cs.fl = null;
   oShadow.style.opacity = '0'; orb.style.zIndex = '';
-  orb.style.opacity = save.orbs > 0 ? '' : '0.25';
+  if (!ballCount(save.ball)) save.ball = BALL_ORDER.find(t => ballCount(t)) || 'orb';
+  const has = ballCount(save.ball) > 0;
+  orb.dataset.type = save.ball;
+  orb.style.opacity = has ? '' : '0.25';
   orbIn.className = 'orb-inner';
   btnRun.disabled = false;
-  if (animated && save.orbs > 0) { // el orbe nuevo sube desde abajo
+  updateCatchItems();
+  if (animated && has) { // el orbe nuevo sube desde abajo
     orb.style.transition = 'none'; setOrb(cs.rest.x, cs.H + 90); void orb.offsetWidth;
     orb.style.transition = 'transform .45s cubic-bezier(.2,1.4,.4,1)';
   } else orb.style.transition = '';
   setOrb(cs.rest.x, cs.rest.y);
-  $('#orbLeft').textContent = `◉ ×${save.orbs}`;
-  if (save.orbs <= 0) {
+  if (!has) {
     const h = $('#catchHint');
-    h.hidden = false; h.innerHTML = '<b>¡No te quedan orbes!</b><br>Visita una parada del mapa para recargar.';
+    h.hidden = false; h.innerHTML = '<b>¡No te quedan orbes!</b><br>Visita una parada o compra en la tienda.';
   }
 }
 function flash(text, ms = 1100) {
@@ -810,8 +877,9 @@ function throwOrb(vxms, vyms, curve = 0) {
   cs.fl = { X: X0, Y: Y0, Z: cam.z0, vx: (Xt - X0) / T, vy, vz: (zT - cam.z0) / T, g, f: 0, rot: 0,
     checked: false, curve, trail: 0, bounces: 0 };
   cs.phase = 'flying';
-  save.orbs = Math.max(0, save.orbs - 1); persist(); updateHud();
-  $('#orbLeft').textContent = `◉ ×${save.orbs}`;
+  cs.fl.ball = save.ball;
+  useBall(save.ball); persist(); updateHud(); updateCatchItems();
+  $('#candyMenu').hidden = true;
   $('#catchHint').hidden = true;
   sfx.throw();
 }
@@ -875,7 +943,9 @@ async function onHit() {
   setOrb(cs.cx, cs.groundY - 37 * oSc, oSc);
   await sleep(550); if (cs !== token) return;
   orb.style.transition = '';
-  const pc = Math.min(0.97, RAR[cs.cr.rarity].catch * bonus), perShake = Math.pow(pc, 1 / 3);
+  const pc = Math.min(0.97, RAR[cs.cr.rarity].catch * bonus * BALLS[cs.fl.ball || 'orb'].mult * (cs.candy || 1));
+  const perShake = Math.pow(pc, 1 / 3);
+  cs.candy = 0; target.classList.remove('candied'); // el caramelo vale para un intento
   for (let i = 0; i < 3; i++) {
     orbIn.classList.remove('shake'); void orbIn.offsetWidth; orbIn.classList.add('shake');
     sfx.shake();
@@ -913,6 +983,7 @@ async function success(token) {
   const c = cs.cr, R = RAR[c.rarity], isNew = !save.caught[c.id], prevLvl = levelOf(save.xp);
   save.caught[c.id] = (save.caught[c.id] || 0) + 1;
   if (isNew) save.first[c.id] = Date.now();
+  save.stats.captures++;
   const gained = R.xp + (isNew ? 500 : 0);
   save.xp += gained;
   removeSpawn(cs.spawn);
@@ -927,7 +998,8 @@ orb.addEventListener('pointerdown', e => {
   if (!cs || cs.phase !== 'aim') return;
   e.preventDefault();
   sfx.unlock();
-  if (save.orbs <= 0) { flash('¡Sin orbes!'); return; }
+  if (!ballCount(save.ball)) { flash('¡Sin orbes!'); return; }
+  $('#candyMenu').hidden = true;
   orb.setPointerCapture(e.pointerId);
   orb.style.transition = '';
   drag = { s: [{ x: e.clientX, y: e.clientY, t: performance.now() }], dx: e.clientX - cs.ox, dy: e.clientY - cs.oy,
@@ -986,6 +1058,111 @@ function stopCam() {
   camStream?.getTracks().forEach(t => t.stop()); camStream = null;
   cam.srcObject = null; cam.hidden = true; catchEl.classList.remove('ar');
 }
+
+// ---------------------------------------------------------------- Objetos: orbes especiales y caramelos
+const BALLS = {
+  orb:   { label: 'Orbe',      mult: 1 },
+  super: { label: 'Superorbe', mult: 1.5 },
+  ultra: { label: 'Ultraorbe', mult: 2 }
+};
+const BALL_ORDER = ['orb', 'super', 'ultra'];
+const CANDIES = {
+  candy: { label: 'Caramelo',        mult: 1.5 },
+  gold:  { label: 'Caramelo dorado', mult: 2.5 }
+};
+const SHOP = [
+  { id: 'orb10',   kind: 'orb',   n: 10, price: 6,  name: '10 orbes',           desc: 'Los de siempre.' },
+  { id: 'orb30',   kind: 'orb',   n: 30, price: 15, name: '30 orbes',           desc: 'Pack grande: sale más barato.' },
+  { id: 'super5',  kind: 'super', n: 5,  price: 12, name: '5 superorbes',       desc: '×1,5 de probabilidad de captura.' },
+  { id: 'ultra3',  kind: 'ultra', n: 3,  price: 15, name: '3 ultraorbes',       desc: '×2 de probabilidad de captura.' },
+  { id: 'candy3',  kind: 'candy', n: 3,  price: 6,  name: '3 caramelos',        desc: 'Dáselo a la criatura: ×1,5 en el siguiente intento.' },
+  { id: 'gold1',   kind: 'gold',  n: 1,  price: 8,  name: '1 caramelo dorado',  desc: '×2,5 en el siguiente intento. ¡Para las raras!' }
+];
+const ballCount = t => t === 'orb' ? save.orbs : (save.items[t] || 0);
+function useBall(t) { if (t === 'orb') save.orbs = Math.max(0, save.orbs - 1); else save.items[t] = Math.max(0, (save.items[t] || 0) - 1); }
+const fmtMult = m => '×' + String(m).replace('.', ',');
+const itemIcon = kind => kind in BALLS ? `<i class="ball-ico t-${kind}"></i>` : `<i class="candy-ico t-${kind}">🍬</i>`;
+
+// Color del anillo según la probabilidad real (rareza × orbe × caramelo): verde, amarillo, naranja, rojo
+function updateRing() {
+  if (!cs) return;
+  const p = RAR[cs.cr.rarity].catch * BALLS[save.ball].mult * (cs.candy || 1);
+  target.style.setProperty('--dc', p >= 0.6 ? '#34c759' : p >= 0.4 ? '#ffd60a' : p >= 0.2 ? '#ff9f0a' : '#ff3b30');
+}
+function updateCatchItems() {
+  if (!cs) return;
+  $('#orbLeft').innerHTML = `${itemIcon(save.ball)}<span>${BALLS[save.ball].label} ×${ballCount(save.ball)}</span>`;
+  const nc = save.items.candy + save.items.gold;
+  $('#candyBtn').innerHTML = `🍬<b>${nc}</b>`;
+  $('#candyBtn').classList.toggle('active', !!cs.candy);
+  $('#candyBtn').title = cs.candy ? `Caramelo activo (${fmtMult(cs.candy)})` : 'Dar un caramelo';
+  $('#candyMenu').innerHTML = Object.entries(CANDIES).map(([k, c]) =>
+    `<button data-candy="${k}" ${save.items[k] ? '' : 'disabled'}>${itemIcon(k)} ${c.label} <small>${fmtMult(c.mult)} · tienes ${save.items[k]}</small></button>`).join('');
+  updateRing();
+}
+// Cambiar de orbe: toca el indicador de la esquina
+$('#orbLeft').onclick = () => {
+  if (!cs || cs.phase !== 'aim') return;
+  const avail = BALL_ORDER.filter(t => ballCount(t) > 0);
+  if (avail.length < 2) { flash(avail.length ? 'Solo tienes este tipo de orbe' : '¡Sin orbes!'); return; }
+  save.ball = avail[(avail.indexOf(save.ball) + 1) % avail.length]; persist();
+  orb.dataset.type = save.ball;
+  updateCatchItems();
+  flash(`${BALLS[save.ball].label} ${BALLS[save.ball].mult > 1 ? fmtMult(BALLS[save.ball].mult) : ''}`, 900);
+};
+$('#candyBtn').onclick = () => {
+  if (!cs || cs.phase !== 'aim') return;
+  if (cs.candy) { flash('Ya se está comiendo un caramelo', 900); return; }
+  if (!save.items.candy && !save.items.gold) { toast('No tienes caramelos. Cómpralos en la tienda.'); return; }
+  $('#candyMenu').hidden = !$('#candyMenu').hidden;
+};
+$('#candyMenu').onclick = async e => {
+  const b = e.target.closest('button[data-candy]'); if (!b || !cs || cs.phase !== 'aim') return;
+  const k = b.dataset.candy; if (!save.items[k]) return;
+  save.items[k]--; persist();
+  $('#candyMenu').hidden = true;
+  // el caramelo vuela hasta la criatura
+  const c = document.createElement('i');
+  c.className = 'fly-candy' + (k === 'gold' ? ' gold' : ''); c.textContent = '🍬';
+  c.style.cssText = `left:${cs.W - 70}px;top:${cs.H - 190}px;--tx:${(cs.cx - (cs.W - 70)).toFixed(0)}px;--ty:${(cs.cy - (cs.H - 190)).toFixed(0)}px`;
+  fx.appendChild(c); c.addEventListener('animationend', () => c.remove());
+  await sleep(550); if (!cs) return;
+  cs.candy = CANDIES[k].mult;
+  target.classList.add('candied');
+  burst(cs.cx, cs.cy, k === 'gold' ? '#ffd60a' : '#ff6fb5', 10, true);
+  sfx.curve();
+  flash(`¡Ñam! ${fmtMult(cs.candy)}`, 1000);
+  updateCatchItems();
+};
+
+// ---------------------------------------------------------------- Tienda
+function renderShop() {
+  $('#shopCoins').innerHTML = `<i class="coin"></i> ${save.coins}`;
+  $('#shopInv').innerHTML = [...BALL_ORDER, 'candy', 'gold'].map(k =>
+    `<span class="inv">${itemIcon(k)} <b>${k === 'orb' ? save.orbs : save.items[k]}</b></span>`).join('');
+  $('#shopList').innerHTML = SHOP.map(it => {
+    const full = it.kind === 'orb' && save.orbs >= CFG.orbsMax;
+    const can = save.coins >= it.price && !full;
+    return `<div class="shop-row nested">
+      <div class="shop-ico">${itemIcon(it.kind)}</div>
+      <div class="shop-info"><b>${it.name}</b><div class="muted">${it.desc}</div></div>
+      <button class="btn small buy" data-id="${it.id}" ${can ? '' : 'disabled'}>${full ? 'Lleno' : `<i class="coin"></i> ${it.price}`}</button>
+    </div>`;
+  }).join('');
+}
+$('#shopList').onclick = e => {
+  const b = e.target.closest('.buy'); if (!b || b.disabled) return;
+  const it = SHOP.find(x => x.id === b.dataset.id); if (!it || save.coins < it.price) return;
+  save.coins -= it.price;
+  if (it.kind === 'orb') save.orbs = Math.min(CFG.orbsMax, save.orbs + it.n);
+  else save.items[it.kind] += it.n;
+  persist(); updateHud(); renderShop(); sfx.success();
+  toast(`Comprado: ${it.name}`);
+  const row = $(`.buy[data-id="${it.id}"]`)?.closest('.shop-row');
+  row?.classList.remove('bought'); void row?.offsetWidth; row?.classList.add('bought');
+};
+$('#btnShop').onclick = () => { renderShop(); $('#shop').hidden = false; };
+document.querySelector('.pill.orbs').onclick = () => { renderShop(); $('#shop').hidden = false; };
 
 // ---------------------------------------------------------------- Nivel / HUD
 const xpFor = lvl => 250 * (lvl - 1) ** 2;
@@ -1109,6 +1286,7 @@ function updateEggBadge() {
 function fuse(c) {
   if ((save.caught[c.id] || 0) < FUSE_N) return;
   save.caught[c.id] -= FUSE_N;
+  save.stats.fused++;
   const egg = { id: 'e' + Date.now().toString(36), family: c.category || 'Otros', rarity: c.rarity, km: EGG_KM[c.rarity],
     from: c.id, fromName: c.name, created: Date.now(), start: null };
   save.eggs.push(egg);
@@ -1196,6 +1374,7 @@ async function hatch(egg) {
   const isNew = !save.caught[c.id] && !save.first[c.id], prevLvl = levelOf(save.xp);
   save.caught[c.id] = (save.caught[c.id] || 0) + 1;
   if (!save.first[c.id]) save.first[c.id] = Date.now();
+  save.stats.hatched++;
   const gained = RAR[c.rarity].xp + (isNew ? 500 : 0) + 200;
   save.xp += gained;
   fillIncubators(); persist(); updateHud(); updateEggBadge(); renderEggs();
@@ -1216,6 +1395,7 @@ $('#btnAlbum').onclick = () => { renderAlbum(); $('#album').hidden = false; };
 $('#btnSettings').onclick = () => {
   $('#sourceInfo').textContent = `${sourceName} — ${creatures.length} criaturas`;
   $('#chkDev').checked = save.dev;
+  renderAccount();
   $('#chkSound').checked = save.sound;
   $('#folderName').textContent = CFG.folder || '(raíz)';
   $('#settings').hidden = false;
@@ -1236,7 +1416,7 @@ $('#btnReload').onclick = async () => {
 $('#btnReset').onclick = () => {
   if (!confirm('¿Seguro? Se borrarán tus capturas y tu experiencia.')) return;
   save.caught = {}; save.first = {}; save.xp = 0; save.gone = {};
-  save.orbs = CFG.orbsStart; save.stops = {}; save.visited = {}; save.coins = CFG.coinsStart; save.fert = {}; save.eggs = []; save.walked = 0; persist(); updateEggBadge();
+  save.orbs = CFG.orbsStart; save.stops = {}; save.visited = {}; save.coins = CFG.coinsStart; save.fert = {}; save.eggs = []; save.walked = 0; save.items = { super: 0, ultra: 0, candy: 0, gold: 0 }; save.ball = 'orb'; save.stats = { captures: 0, hatched: 0, fused: 0 }; persist(); updateEggBadge();
   updateHud(); refreshSpawns(); refreshStops(); toast('Progreso borrado');
 };
 
@@ -1248,10 +1428,298 @@ async function initCreatures(force) {
   refreshSpawns();
 }
 
+// ---------------------------------------------------------------- Cuenta con Google y guardado en la nube
+// La partida se sube sola unos segundos después de cada cambio. Los ajustes del aparato no se suben.
+const LOCAL_ONLY = ['dev', 'cam', 'sound', 'cloudUid'];
+let cloudEnabled = false, cloudLoading = !!(CFG.firebase && CFG.firebase.apiKey), cloudT = null, cloudState = '';
+const signedIn = () => !!(window.Cloud && Cloud.user && save.cloudUid === Cloud.user.uid);
+function cloudData() {
+  const d = {};
+  for (const k in save) if (!LOCAL_ONLY.includes(k)) d[k] = save[k];
+  return d;
+}
+function setCloudState(t) { cloudState = t; const el = $('#cloudState'); if (el) el.textContent = t; }
+function cloudQueue() {
+  if (!window.Cloud || !Cloud.user) return; // antes de conectar no hay nada que subir
+  if (!signedIn()) return;
+  clearTimeout(cloudT); cloudT = setTimeout(cloudPush, 3000);
+}
+async function cloudPush() {
+  clearTimeout(cloudT); cloudT = null;
+  if (!signedIn()) return;
+  try {
+    setCloudState('Guardando…');
+    await Cloud.save(cloudData());
+    if (myProfile) Cloud.saveProfile({ stats: profileStats(), updated: Date.now() }).catch(e => console.warn('perfil', e));
+    setCloudState(`Guardado en la nube ✓ (${new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })})`);
+  } catch (e) {
+    console.warn(e);
+    setCloudState('⚠ No se pudo guardar (¿sin conexión?). Se reintentará.');
+    cloudT = setTimeout(cloudPush, 30000);
+  }
+}
+// Al salir de la app o cambiar de pestaña, sube lo pendiente
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && cloudT) cloudPush(); });
+
+const summary = d => `nivel ${levelOf(d.xp || 0)} · ${Object.keys(d.first || {}).length} criaturas · ${(d.eggs || []).length} huevos`;
+function adoptCloud(r, uid) {
+  const keep = { dev: save.dev, cam: save.cam, sound: save.sound };
+  localStorage.setItem(SAVE_KEY, JSON.stringify(Object.assign({}, r, keep, { cloudUid: uid })));
+  location.reload();
+}
+async function onCloudUser(u) {
+  cloudLoading = false;
+  renderAccount();
+  if (!u) { myProfile = null; profilesCache = []; return; }
+  loadMyProfile(u);
+  try {
+    setCloudState('Comprobando tu partida…');
+    const r = await Cloud.load();
+    const localProgress = save.xp > 0 || Object.keys(save.first).length > 0;
+    if (!r) {                                     // cuenta nueva: se sube la partida de este móvil
+      save.cloudUid = u.uid; persist(); await cloudPush();
+      toast('Tu partida ya se guarda en tu cuenta ✓'); renderAccount(); return;
+    }
+    if (save.cloudUid === u.uid) {                // mismo jugador: gana la versión más reciente
+      if ((r.savedAt || 0) > (save.savedAt || 0) + 1000) return adoptCloud(r, u.uid);
+      if ((save.savedAt || 0) > (r.savedAt || 0)) await cloudPush(); else setCloudState('Guardado en la nube ✓');
+      return;
+    }
+    if (!localProgress) return adoptCloud(r, u.uid);
+    // Hay dos partidas distintas: que elija el jugador
+    const card = $('#modalCard');
+    card.className = 'card';
+    card.innerHTML = `<h3>¿Qué partida usas?</h3>
+      <div class="stats">Tu cuenta ya tiene una partida guardada y en este móvil hay otra.</div>
+      <button class="btn use-cloud">☁️ La de mi cuenta<br><small></small></button>
+      <button class="btn secondary use-local">📱 La de este móvil<br><small></small></button>
+      <div class="muted" style="margin-top:10px">La que no elijas se perderá.</div>`;
+    card.querySelector('.use-cloud small').textContent = summary(r);
+    card.querySelector('.use-local small').textContent = summary(save);
+    card.querySelector('.use-cloud').onclick = () => adoptCloud(r, u.uid);
+    card.querySelector('.use-local').onclick = async () => {
+      $('#modal').hidden = true;
+      save.cloudUid = u.uid; persist(); await cloudPush(); renderAccount();
+      toast('Tu cuenta ahora tiene la partida de este móvil ✓');
+    };
+    $('#modal').hidden = false;
+  } catch (e) {
+    console.warn(e);
+    setCloudState('⚠ No se pudo leer tu partida de la nube.');
+  }
+}
+
+function renderAccount() {
+  const box = $('#accountRow'); if (!box) return;
+  const u = window.Cloud && Cloud.user;
+  if (!cloudEnabled && !cloudLoading) {
+    box.innerHTML = `<div><b>Cuenta</b><div class="muted">El guardado en la nube está desactivado.
+      Para activarlo hay que configurar Firebase (lo explica el README).</div></div>`;
+    return;
+  }
+  if (cloudLoading) { box.innerHTML = '<div><b>Cuenta</b><div class="muted">Conectando…</div></div>'; return; }
+  if (!u) {
+    box.innerHTML = `<div><b>Cuenta</b><div class="muted">Inicia sesión para guardar tu partida y seguir en otro móvil.</div>
+      <button class="btn google" id="btnLogin"><span class="g-logo">G</span> Iniciar sesión con Google</button></div>`;
+    $('#btnLogin').onclick = async () => {
+      try { await Cloud.signIn(); }
+      catch (e) { console.warn(e); toast('No se pudo iniciar sesión: ' + (e.code || e.message), 5000); }
+    };
+    return;
+  }
+  box.innerHTML = `<div class="account"><img class="avatar" alt="" hidden><div class="acc-info"><b class="acc-name"></b>
+      <div class="muted" id="cloudState"></div></div></div>
+    <button class="btn secondary small" id="btnLogout">Cerrar sesión</button>`;
+  box.querySelector('.acc-name').textContent = u.displayName || u.email || 'Tu cuenta';
+  if (u.photoURL && /^https:\/\//.test(u.photoURL)) { const img = box.querySelector('.avatar'); img.src = u.photoURL; img.hidden = false; }
+  setCloudState(cloudState || 'Conectado');
+  const bp = document.createElement('button');
+  bp.className = 'btn small'; bp.textContent = '👥 Jugadores'; bp.onclick = openSocial;
+  $('#btnLogout').before(bp);
+  $('#btnLogout').onclick = async () => {
+    if (cloudT) await cloudPush();
+    await Cloud.signOut();
+    myProfile = null; profilesCache = [];
+    save.cloudUid = null; localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+    cloudState = ''; renderAccount();
+    toast('Sesión cerrada. Tu partida sigue guardada en tu cuenta.');
+  };
+}
+
+// ---------------------------------------------------------------- Perfiles y amigos
+// Cada jugador tiene un perfil público (solo para quien haya iniciado sesión) en perfiles/{uid}:
+// apodo, frase, 3 favoritas y estadísticas. La partida completa sigue siendo privada.
+const NICK_MAX = 24, BIO_MAX = 140;
+let myProfile = null, profilesCache = [];
+const creatureById = id => creatures.find(c => c.id === id);
+const defaultNick = u => ((u.displayName || 'Jugador').trim().split(/\s+/)[0] || 'Jugador').slice(0, NICK_MAX);
+
+function profileStats() {
+  const ids = Object.keys(save.first);
+  const best = ids.map(creatureById).filter(Boolean)
+    .sort((a, b) => RAR_ORDER.indexOf(b.rarity) - RAR_ORDER.indexOf(a.rarity))[0];
+  return { level: levelOf(save.xp), xp: save.xp, discovered: ids.length, total: creatures.length,
+    captures: save.stats.captures, hatched: save.stats.hatched, fused: save.stats.fused,
+    km: Math.round(save.walked * 100) / 100, stops: Object.keys(save.visited).length, best: best ? best.id : null };
+}
+async function loadMyProfile(u) {
+  try {
+    myProfile = await Cloud.loadProfile();
+    if (!myProfile) {
+      myProfile = { nick: defaultNick(u), bio: '', favs: [] };
+      await Cloud.saveProfile({ ...myProfile, stats: profileStats(), creado: Date.now(), updated: Date.now() });
+    }
+    if (!$('#social').hidden) renderSocial();
+  } catch (e) {
+    console.warn('perfil', e);
+    if (e.code === 'permission-denied')
+      toast('Falta actualizar las reglas de Firebase para los perfiles (mira el README).', 6000);
+  }
+}
+
+function avatarHtml(p, size) {
+  const c = creatureById((p.favs || [])[0]);
+  return `<div class="pavatar ${c ? 'r-' + c.rarity : ''}" style="--s:${size}px">${c
+    ? `<img src="${esc(c.url)}" alt="">` : `<span>${esc((p.nick || '?').charAt(0).toUpperCase())}</span>`}</div>`;
+}
+function favsHtml(p) {
+  const favs = (p.favs || []).slice(0, 3);
+  return `<div class="pfavs">${[0, 1, 2].map(i => {
+    const c = creatureById(favs[i]);
+    return c ? `<div class="pfav r-${c.rarity}"><img src="${esc(c.url)}" alt=""><span>${esc(c.name)}</span><i class="tag r-${c.rarity}">${RAR[c.rarity].label}</i></div>`
+      : '<div class="pfav empty-fav"><span>—</span></div>';
+  }).join('')}</div>`;
+}
+function statsHtml(st = {}) {
+  const best = creatureById(st.best);
+  const cell = (v, l) => `<div class="pstat"><b>${v}</b><span>${l}</span></div>`;
+  return `<div class="pstats">
+    ${cell(st.level ?? 1, 'Nivel')}
+    ${cell(`${st.discovered ?? 0}<small>/${st.total || creatures.length}</small>`, 'Descubiertas')}
+    ${cell(st.captures ?? 0, 'Capturas')}
+    ${cell(st.hatched ?? 0, 'Huevos abiertos')}
+    ${cell(String(st.km ?? 0).replace('.', ','), 'Km andados')}
+    ${cell(st.stops ?? 0, 'Paradas')}
+    </div>
+    ${best ? `<div class="pbest">La más rara: <img src="${esc(best.url)}" alt=""> <b>${esc(best.name)}</b> <span class="tag r-${best.rarity}">${RAR[best.rarity].label}</span></div>` : ''}`;
+}
+function profileCardHtml(p, mine) {
+  return `<div class="pcard nested">
+    <div class="phead">${avatarHtml(p, 64)}
+      <div class="pid"><b class="pnick">${esc(p.nick || 'Jugador')}</b>
+        <div class="muted">${p.bio ? esc(p.bio) : mine ? 'Toca «Editar perfil» para poner una frase.' : ''}</div></div></div>
+    <div class="sec-mini">Favoritas</div>${favsHtml(p)}
+    <div class="sec-mini">Estadísticas</div>${statsHtml(p.stats)}
+    ${mine ? '<button class="btn" id="btnEditProfile">✏️ Editar perfil</button>' : ''}
+  </div>`;
+}
+
+async function openSocial() {
+  $('#settings').hidden = true;
+  $('#social').hidden = false;
+  renderSocial();
+  if (!signedIn()) return;
+  try { profilesCache = await Cloud.loadProfiles(); renderSocial(); }
+  catch (e) {
+    console.warn(e);
+    $('#socialList').innerHTML = `<div class="empty">No se pudieron cargar los perfiles${e.code === 'permission-denied'
+      ? ': falta actualizar las reglas de Firebase (mira el README)' : ''}.</div>`;
+  }
+}
+function renderSocial() {
+  const box = $('#socialBody');
+  if (!cloudEnabled) {
+    box.innerHTML = '<div class="empty">Para ver a tus amigos hay que activar las cuentas con Google (Firebase).</div>';
+    return;
+  }
+  if (!signedIn()) {
+    box.innerHTML = `<div class="empty">Inicia sesión con Google para tener perfil y ver el de tus amigos.
+      <button class="btn google" id="socialLogin"><span class="g-logo">G</span> Iniciar sesión con Google</button></div>`;
+    $('#socialLogin').onclick = () => Cloud.signIn().catch(e => toast('No se pudo iniciar sesión: ' + (e.code || e.message), 5000));
+    return;
+  }
+  const me = { ...(myProfile || { nick: defaultNick(Cloud.user), favs: [] }), stats: profileStats() };
+  const others = profilesCache.filter(p => p.uid !== Cloud.user.uid);
+  const ranking = [{ ...me, uid: Cloud.user.uid, me: true }, ...others]
+    .sort((a, b) => (b.stats?.xp || 0) - (a.stats?.xp || 0));
+  const medal = i => ['🥇', '🥈', '🥉'][i] || `${i + 1}.`;
+  box.innerHTML = `<div class="sec-h">Tu perfil</div>${profileCardHtml(me, true)}
+    <div class="sec-h">Clasificación</div>
+    <div id="socialList">${others.length || profilesCache.length ? ranking.map((p, i) => `
+      <button class="prow nested ${p.me ? 'me' : ''}" data-uid="${esc(p.uid)}">
+        <span class="pos">${medal(i)}</span>${avatarHtml(p, 44)}
+        <span class="prow-info"><b>${esc(p.nick || 'Jugador')}${p.me ? ' (tú)' : ''}</b>
+          <small>Nivel ${p.stats?.level ?? 1} · ${p.stats?.discovered ?? 0} criaturas · ${p.stats?.xp ?? 0} XP</small></span>
+      </button>`).join('') : '<div class="empty">Cuando tus amigos inicien sesión aparecerán aquí.</div>'}</div>`;
+  $('#btnEditProfile').onclick = editProfile;
+}
+$('#socialBody').onclick = e => {
+  const row = e.target.closest('.prow'); if (!row) return;
+  if (row.classList.contains('me')) { $('.pcard')?.scrollIntoView({ behavior: 'smooth' }); return; }
+  const p = profilesCache.find(x => x.uid === row.dataset.uid); if (!p) return;
+  const card = $('#modalCard');
+  card.className = 'card pmodal';
+  card.innerHTML = profileCardHtml(p, false) + '<button class="btn secondary ok">Cerrar</button>';
+  card.querySelector('.ok').onclick = () => { $('#modal').hidden = true; };
+  $('#modal').hidden = false;
+};
+
+function editProfile() {
+  if (!myProfile) { toast('Tu perfil aún se está cargando…'); return; }
+  let favs = (myProfile.favs || []).filter(id => creatureById(id));
+  const options = creatures.filter(known)
+    .sort((a, b) => RAR_ORDER.indexOf(b.rarity) - RAR_ORDER.indexOf(a.rarity) || a.name.localeCompare(b.name, 'es'));
+  const card = $('#modalCard');
+  card.className = 'card edit-card';
+  card.innerHTML = `<h3>Editar perfil</h3>
+    <label class="field">Apodo <input id="pfNick" maxlength="${NICK_MAX}"></label>
+    <label class="field">Frase <textarea id="pfBio" rows="2" maxlength="${BIO_MAX}" placeholder="Algo sobre ti"></textarea></label>
+    <div class="sec-mini">Tus 3 favoritas <small>(la primera es tu foto de perfil)</small></div>
+    <div class="fav-pick">${options.length ? options.map(c => `<button class="fp r-${c.rarity}" data-id="${esc(c.id)}">
+      <img src="${esc(c.url)}" alt=""><span>${esc(c.name)}</span><b></b></button>`).join('')
+      : '<div class="muted">Aún no has capturado ninguna criatura.</div>'}</div>
+    <button class="btn save">Guardar</button><button class="btn secondary cancel">Cancelar</button>`;
+  card.querySelector('#pfNick').value = myProfile.nick || '';
+  card.querySelector('#pfBio').value = myProfile.bio || '';
+  const paint = () => card.querySelectorAll('.fp').forEach(b => {
+    const i = favs.indexOf(b.dataset.id);
+    b.classList.toggle('on', i >= 0);
+    b.querySelector('b').textContent = i >= 0 ? i + 1 : '';
+  });
+  paint();
+  card.querySelector('.fav-pick').onclick = e => {
+    const b = e.target.closest('.fp'); if (!b) return;
+    const id = b.dataset.id, i = favs.indexOf(id);
+    if (i >= 0) favs.splice(i, 1);
+    else if (favs.length < 3) favs.push(id);
+    else toast('Solo puedes elegir 3. Quita una primero.');
+    paint();
+  };
+  card.querySelector('.cancel').onclick = () => { $('#modal').hidden = true; };
+  card.querySelector('.save').onclick = async () => {
+    const nick = card.querySelector('#pfNick').value.trim().slice(0, NICK_MAX) || defaultNick(Cloud.user);
+    const bio = card.querySelector('#pfBio').value.trim().slice(0, BIO_MAX);
+    const btn = card.querySelector('.save'); btn.disabled = true; btn.textContent = 'Guardando…';
+    try {
+      await Cloud.saveProfile({ nick, bio, favs, stats: profileStats(), updated: Date.now() });
+      myProfile = { ...myProfile, nick, bio, favs };
+      $('#modal').hidden = true; renderSocial(); toast('Perfil guardado ✓');
+    } catch (e) {
+      console.warn(e); btn.disabled = false; btn.textContent = 'Guardar';
+      toast(e.code === 'permission-denied' ? 'Firebase no deja guardar: actualiza las reglas (README).' : 'No se pudo guardar el perfil.', 5000);
+    }
+  };
+  $('#modal').hidden = false;
+}
+$('.level').onclick = openSocial;
+
 // ---------------------------------------------------------------- Arranque
 updateHud();
 updateEggBadge();
 setStatus('Cargando imágenes…');
+if (window.Cloud) Cloud.init(CFG.firebase, onCloudUser)
+  .then(ok => { cloudEnabled = ok; if (!ok) cloudLoading = false; renderAccount(); })
+  .catch(e => { console.warn(e); cloudLoading = false; renderAccount(); });
 Promise.all([initCreatures(false), loadParadas()]).then(() => {
   startGeo();
   setInterval(refreshSpawns, 20000); // las apariciones se renuevan
@@ -1261,5 +1729,5 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
   navigator.serviceWorker.register('sw.js').catch(() => {});
 
 // Para pruebas desde la consola
-window.fotocaza = { save, parse: parseCreature, get creatures() { return creatures; }, openCatch, throwOrb: (vx, vy) => cs && throwOrb(vx, vy), get state() { return cs; } };
+window.fotocaza = { save, parse: parseCreature, _social: { openSocial, loadMyProfile }, get creatures() { return creatures; }, openCatch, throwOrb: (vx, vy) => cs && throwOrb(vx, vy), get state() { return cs; } };
 })();

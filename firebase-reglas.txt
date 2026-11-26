@@ -1,0 +1,26 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // La partida de cada jugador: solo la puede leer y escribir él mismo
+    match /jugadores/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Perfiles: cualquiera que haya iniciado sesión los puede ver; cada uno solo edita el suyo
+    match /perfiles/{uid} {
+      allow read: if request.auth != null;
+      allow delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['nick', 'bio', 'favs', 'stats', 'creado', 'updated'])
+        && request.resource.data.nick is string
+        && request.resource.data.nick.size() > 0 && request.resource.data.nick.size() <= 24
+        && (!('bio' in request.resource.data) || (request.resource.data.bio is string && request.resource.data.bio.size() <= 140))
+        && (!('favs' in request.resource.data) || (request.resource.data.favs is list && request.resource.data.favs.size() <= 3));
+    }
+
+    // Todo lo demás, cerrado
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

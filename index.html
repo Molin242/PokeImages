@@ -18,22 +18,30 @@
   <div id="map"></div>
 
   <div id="hud-top">
-    <div class="level" title="Nivel"><span id="lvl">1</span></div>
+    <div class="level" title="Tu perfil y amigos"><span id="lvl">1</span></div>
     <div class="xp"><div id="xpbar"></div><span id="xptext">0 XP</span></div>
     <div class="pill orbs" title="Orbes y todocoins"><i class="mini-orb"></i><span id="orbCount">0</span><i class="coin"></i><span id="coinCount">0</span></div>
     <div id="status" class="pill">Cargando…</div>
+  </div>
+
+  <div id="radar" class="radar" hidden>
+    <div class="radar-title">📡 Raras por la zona</div>
+    <div id="radarList" class="radar-list"></div>
   </div>
 
   <div id="hud-bottom">
     <button id="btnAlbum" class="round" aria-label="Álbum" title="Álbum">
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 3v18"/><path d="M12 8h4M12 12h4"/></svg>
     </button>
-    <button id="btnCenter" class="round big" aria-label="Centrar en mí" title="Centrar en mí">
-      <svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5 4.6 20.2a.6.6 0 0 0 .8.8L12 17.8l6.6 3.2a.6.6 0 0 0 .8-.8z"/></svg>
-    </button>
     <button id="btnEggs" class="round" aria-label="Huevos" title="Huevos">
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2.8c3.6 0 6.8 6 6.8 10.6A6.8 6.8 0 0 1 12 21.2a6.8 6.8 0 0 1-6.8-7.8C5.2 8.8 8.4 2.8 12 2.8z"/><path d="M7.5 13.5l2.2-1.6 2.3 1.6 2.3-1.6 2.2 1.6"/></svg>
       <i id="eggBadge" class="badge" hidden></i>
+    </button>
+    <button id="btnCenter" class="round big" aria-label="Centrar en mí" title="Centrar en mí">
+      <svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5 4.6 20.2a.6.6 0 0 0 .8.8L12 17.8l6.6 3.2a.6.6 0 0 0 .8-.8z"/></svg>
+    </button>
+    <button id="btnShop" class="round" aria-label="Tienda" title="Tienda">
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M5 8h14l-1.2 11.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8z"/><path d="M9 10V6.5a3 3 0 0 1 6 0V10"/></svg>
     </button>
     <button id="btnSettings" class="round" aria-label="Ajustes" title="Ajustes">
       <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h9M18 7h2M4 17h3M12 17h8"/><circle cx="15.5" cy="7" r="2.5"/><circle cx="9.5" cy="17" r="2.5"/></svg>
@@ -62,7 +70,9 @@
     <div id="fx"></div>
     <div id="orb"><div class="orb-inner"></div></div>
     <div id="catchMsg"></div>
-    <div id="orbLeft" class="orb-left"></div>
+    <button id="orbLeft" class="orb-left" title="Cambiar de orbe"></button>
+    <button id="candyBtn" class="candy-btn" title="Dar un caramelo"></button>
+    <div id="candyMenu" class="candy-menu" hidden></div>
     <div id="catchHint" class="hint">Desliza el orbe hacia arriba para lanzarlo.<br>¡Acierta cuando el anillo sea pequeño!</div>
   </section>
 
@@ -92,10 +102,28 @@
     <div class="body"><div id="eggList"></div></div>
   </section>
 
+  <!-- TIENDA -->
+  <section id="shop" class="panel" hidden>
+    <header><h2>Tienda</h2><span id="shopCoins" class="tag cat"></span><button class="close" data-close="shop">✕</button></header>
+    <div class="body">
+      <div id="shopInv" class="shop-inv nested"></div>
+      <div id="shopList"></div>
+      <p class="muted" style="text-align:center;margin-top:14px">Consigue todocoins visitando paradas. Los caramelos se usan en la captura (botón 🍬)
+        y el tipo de orbe se cambia tocando el contador de orbes.</p>
+    </div>
+  </section>
+
+  <!-- JUGADORES -->
+  <section id="social" class="panel" hidden>
+    <header><h2>Jugadores</h2><button class="close" data-close="social">✕</button></header>
+    <div class="body"><div id="socialBody"></div></div>
+  </section>
+
   <!-- AJUSTES -->
   <section id="settings" class="panel" hidden>
     <header><h2>Ajustes</h2><button class="close" data-close="settings">✕</button></header>
     <div class="body">
+      <div class="row" id="accountRow"></div>
       <div class="row">
         <div><b>Imágenes</b><div id="sourceInfo" class="muted"></div></div>
         <button id="btnReload" class="btn secondary small">↻ Recargar</button>
@@ -134,6 +162,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="config.js"></script>
   <script src="osm.js"></script>
+  <script src="cloud.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

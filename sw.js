@@ -1,6 +1,6 @@
 // Service worker: permite instalar la app y abrirla sin conexión (red primero, caché de respaldo)
 const CACHE = 'fotocaza-v2';
-const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'osm.js', 'config.js', 'icon.svg', 'manifest.webmanifest'];
+const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'osm.js', 'cloud.js', 'config.js', 'icon.svg', 'manifest.webmanifest'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));
