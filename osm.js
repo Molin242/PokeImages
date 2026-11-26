@@ -149,5 +149,44 @@ window.OSM = (() => {
     return celdas.flatMap(([cx, cy]) => get(cx, cy) || []);
   }
 
-  return { CELL, cellOf, metros, get, asegurar, celdasAlrededor, celdasEnCaja, enCeldas };
+  // ---------------------------------------------------------------- Barrios (solo Región de Murcia)
+  // Pregunta a OpenStreetMap en qué barrio/pedanía/diputación cae un punto. No se descarga ningún mapa:
+  // se consulta solo cuando hace falta y la respuesta se guarda por zonas de ~100 m.
+  const BKEY = 'fotocaza_barrio_';
+  async function overpass(q) {
+    let error = null;
+    for (const url of SERVIDORES) {
+      try {
+        const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'data=' + encodeURIComponent(q), signal: AbortSignal.timeout(20000) });
+        if (!r.ok) throw new Error('Overpass ' + r.status);
+        return await r.json();
+      } catch (e) { error = e; }
+    }
+    throw error;
+  }
+  const enProceso = new Map();
+  function barrio(lat, lng) {
+    const k = `${lat.toFixed(3)}_${lng.toFixed(3)}`;
+    try { const c = localStorage.getItem(BKEY + k); if (c) return Promise.resolve(JSON.parse(c)); } catch {}
+    if (enProceso.has(k)) return enProceso.get(k);
+    const p = (async () => {
+      const d = await overpass(`[out:json][timeout:20];is_in(${lat.toFixed(5)},${lng.toFixed(5)})->.a;` +
+        `area.a[boundary=administrative][admin_level~"^(4|8|9|10|11)$"];out tags;`);
+      const areas = d.elements.map(e => ({ id: String(e.id), lvl: +e.tags.admin_level, name: e.tags.name || '', iso: e.tags['ISO3166-2'] || '' }));
+      const murcia = areas.some(a => a.lvl === 4 && (a.iso === 'ES-MC' || /murcia/i.test(a.name)));
+      let res = { murcia };
+      if (murcia) {
+        const muni = areas.find(a => a.lvl === 8);
+        const sub = areas.filter(a => a.lvl >= 9).sort((a, b) => b.lvl - a.lvl)[0] || muni; // lo más concreto
+        if (sub) res = { murcia: true, id: sub.id, name: sub.name, muni: muni ? muni.name : sub.name };
+      }
+      try { localStorage.setItem(BKEY + k, JSON.stringify(res)); } catch {}
+      return res;
+    })().finally(() => enProceso.delete(k));
+    enProceso.set(k, p);
+    return p;
+  }
+
+  return { CELL, cellOf, metros, get, asegurar, celdasAlrededor, celdasEnCaja, enCeldas, barrio };
 })();

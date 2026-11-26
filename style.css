@@ -580,3 +580,71 @@ body.catching #toast{top:calc(env(safe-area-inset-top) + 170px)}
 .fp.on{border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,.25)}
 .fp.on b{display:grid}
 #accountRow .btn.small{margin-top:8px}
+/* Barra de raras: solo la silueta, sin desvelar la criatura */
+.radar-item img{filter:brightness(0) opacity(.72)}
+@media (prefers-color-scheme:dark){.radar-item img{filter:brightness(0) invert(1) opacity(.8)}}
+/* El círculo de color va aparte; solo la imagen se oscurece */
+.radar-item .radar-sil{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;
+  background:color-mix(in srgb,var(--rc) 22%,rgba(255,255,255,.6));border:2px solid var(--rc);
+  box-shadow:0 0 10px color-mix(in srgb,var(--rc) 60%,transparent);transition:transform .2s}
+.radar-item .radar-sil img{width:32px;height:32px;padding:0;border:0;border-radius:0;background:none;box-shadow:none;object-fit:contain;transform:none}
+.radar-item.on .radar-sil{transform:scale(1.12);box-shadow:0 0 0 3px #fff,0 0 16px var(--rc)}
+
+/* ---------- Criaturas brillantes (efecto foil) ---------- */
+.foil{position:relative;display:block;width:100%;height:100%;isolation:isolate}
+.foil > img{display:block;width:100%;height:100%;object-fit:contain;
+  filter:hue-rotate(var(--shue,150deg)) saturate(1.5) brightness(1.06) drop-shadow(0 0 6px rgba(255,255,255,.9))}
+.foil::after,.foil-layer{content:'';position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(115deg,transparent 18%,rgba(255,0,170,.65) 28%,rgba(255,235,0,.6) 36%,rgba(0,255,180,.6) 44%,
+    rgba(0,180,255,.65) 52%,rgba(190,0,255,.6) 60%,transparent 70%);
+  background-size:260% 260%;animation:foil 2.6s linear infinite;mix-blend-mode:color-dodge;opacity:.85;
+  -webkit-mask:var(--img) center/contain no-repeat;mask:var(--img) center/contain no-repeat}
+.foil::before{content:'✦';position:absolute;right:4%;top:2%;z-index:2;font-size:14px;color:#fff;
+  text-shadow:0 0 6px #fff,0 0 12px #ffd60a;animation:twinkle 1.4s ease-in-out infinite}
+@keyframes foil{from{background-position:120% 0}to{background-position:-140% 0}}
+@keyframes twinkle{0%,100%{opacity:.2;transform:scale(.6) rotate(0)}50%{opacity:1;transform:scale(1.2) rotate(45deg)}}
+/* En el mapa */
+.spawn.shiny .foil{animation:bob 2.4s ease-in-out infinite}
+.spawn.shiny .foil img{animation:none}
+.spawn.shiny::after{background:conic-gradient(#ff2d92,#ffd60a,#34c759,#0a84ff,#b05cff,#ff2d92);opacity:.9}
+/* En la captura */
+#target.shiny #creatureImg{filter:hue-rotate(var(--shue,150deg)) saturate(1.5) brightness(1.06) drop-shadow(0 0 14px rgba(255,255,255,.9)) drop-shadow(0 12px 10px rgba(0,0,0,.3))}
+#cFoil{z-index:1;transition:transform .35s ease-in,opacity .35s}
+#creatureImg.absorb ~ #cFoil,#creatureImg.flee ~ #cFoil{opacity:0;transform:scale(0)}
+/* Tarjetas y álbum */
+.card-pic{width:72%;aspect-ratio:1;margin:0 auto}
+.card-pic > img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 8px 8px rgba(0,0,0,.25))}
+.card .card-pic img{width:100%}
+.shiny-new{background:linear-gradient(90deg,#ff2d92,#ffd60a,#34c759,#0a84ff,#b05cff)!important;-webkit-background-clip:text!important;background-clip:text!important;
+  color:transparent!important;font-size:15px!important}
+.tag.shiny-tag{background:linear-gradient(120deg,#ff2d92,#ffd60a,#34c759,#0a84ff,#b05cff);color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.4)}
+.shiny-owned{display:flex;align-items:center;gap:10px;justify-content:center;margin-top:10px;font-size:13px;color:var(--sub)}
+.shiny-owned .foil{width:44px;height:44px;flex:none}
+.cell .foil{aspect-ratio:1;height:auto}
+.cell.has-shiny{box-shadow:var(--hi),0 0 0 2px transparent,0 0 14px rgba(255,214,10,.45);
+  border-image:linear-gradient(135deg,#ff2d92,#ffd60a,#34c759,#0a84ff,#b05cff) 1}
+.cell.has-shiny{border-image:none;outline:2px solid transparent;
+  background:var(--sheen),linear-gradient(var(--glass-nested),var(--glass-nested)) padding-box,
+    linear-gradient(135deg,#ff2d92,#ffd60a,#34c759,#0a84ff,#b05cff) border-box;border:2px solid transparent}
+.shiny-badge{position:absolute;left:6px;bottom:24px;font-style:normal;font-size:9px;font-weight:800;padding:1px 6px;border-radius:999px;color:#fff;
+  background:linear-gradient(120deg,#ff2d92,#ffd60a,#34c759,#0a84ff,#b05cff);text-shadow:0 1px 1px rgba(0,0,0,.4)}
+
+/* ---------- Barrios ---------- */
+#status{pointer-events:auto;cursor:pointer}
+#album header .btn.small{margin-left:auto}
+#album header .close{margin-left:8px}
+.brow{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;margin-bottom:8px;border-radius:20px}
+.brow.here{border-color:var(--accent);box-shadow:var(--hi),0 0 0 3px rgba(10,132,255,.15)}
+.bicon{font-size:26px;line-height:1;width:34px;text-align:center;flex:none;margin-top:2px}
+.binfo{flex:1;min-width:0}
+.binfo b{font-size:16px}
+.binfo .bar{margin-top:8px;height:9px}
+.binfo small{display:block;margin-top:6px}
+.brow.lvl-4 .bar i{background:linear-gradient(90deg,#ffd60a,#ff9f0a)}
+.brow.lvl-5 .bar i,.brow.lvl-6 .bar i{background:linear-gradient(90deg,#64d2ff,#bf5af2)}
+.brow.lvl-7 .bar i{background:linear-gradient(90deg,#ff2d92,#ffd60a,#34c759,#0a84ff)}
+.bsum{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:12px;margin:4px 0 14px;text-align:center;border-radius:20px}
+.bsum b{display:block;font-size:22px;font-weight:800}
+.bsum span{font-size:11px;color:var(--sub);font-weight:600}
+.pstats{grid-template-columns:repeat(4,1fr)}
+.pstat b{font-size:17px}

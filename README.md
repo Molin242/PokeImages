@@ -33,16 +33,16 @@ Las imágenes sueltas en `imagenes/` van a «Otros».
 
 | Rareza | Probabilidad de aparecer |
 |---|---|
-| Común | ~50 % |
-| Raro | ~25 % |
-| Superraro | ~12 % |
-| Épico | ~7 % |
-| Legendario | ~3,5 % |
-| Mítico | ~1,6 % |
-| Astral | ~0,7 % |
-| Secreto | ~0,2 % |
+| Común | ~55 % (1 de cada 2) |
+| Raro | ~25 % (1 de cada 4) |
+| Superraro | ~11 % (1 de cada 9) |
+| Épico | ~5 % (1 de cada 20) |
+| Legendario | ~2 % (1 de cada 50) |
+| Mítico | ~0,7 % (1 de cada 140) |
+| Astral | ~0,25 % (1 de cada 400) |
+| Secreto | ~0,05 % (1 de cada 2000) |
 
-(Si una rareza no tiene ninguna imagen, su probabilidad se reparte entre las demás.)
+(Si una rareza no tiene ninguna imagen, su probabilidad se reparte entre las demás. Se puede ajustar en `config.js` con `rarityWeights`.)
 
 | Archivo | Criatura |
 |---|---|
@@ -68,6 +68,26 @@ Mientras la carpeta esté vacía, la app usa unas criaturas de demostración.
 - Las secretas salen en la barra como «?» hasta que captures una.
 - Las **paradas se ven siempre**, estés donde estés.
 - Las distancias se cambian en `config.js` (`revealRadius`, `radarRange`, `hintRadius`).
+
+## Criaturas brillantes ✨
+
+Más o menos **1 de cada 200** criaturas sale **brillante**: otros colores y un efecto holográfico (foil) que se mueve.
+Es la misma para todos (si a ti te sale brillante en un sitio, a tus amigos también). Al abrir la captura avisa
+«✨ ¡Es brillante!», da +1000 XP extra y en el álbum se marca con borde arcoíris y la etiqueta **✨ Brillante**.
+Los huevos y las paradas abonadas también pueden dar brillantes. La probabilidad se cambia en `config.js` (`shinyRate`).
+
+## Maestría de barrios (Región de Murcia)
+
+Cada captura que hagas **dentro de la Región de Murcia** suma puntos al barrio, pedanía o diputación donde estés
+(en Murcia ciudad, el barrio: La Catedral, La Fama…; fuera, la pedanía o diputación; si no hay, el municipio):
+
+- +1 por captura · +1 si es una especie nueva en ese barrio · +5 si es brillante.
+- Niveles: 🧭 Explorador (1) · 🥉 Bronce (10) · 🥈 Plata (30) · 🥇 Oro (70) · 💠 Platino (150) · 💎 Diamante (300) · 👑 Leyenda (600).
+  Cada nivel nuevo da todocoins.
+- Arriba a la derecha sale el barrio en el que estás; tócalo (o **Álbum → 🏘️ Barrios**) para ver todos tus barrios por municipio.
+
+Los barrios salen de OpenStreetMap: no se descarga ningún mapa, solo se pregunta en qué barrio cae cada captura
+y se guarda la respuesta. Si no hay conexión, la captura se apunta y se asigna al barrio más tarde.
 
 ## Cómo capturar
 
