@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FotoCaza · Editor de paradas</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body.editor{touch-action:auto}
+    body.editor #map{position:fixed;inset:0}
+    #ed aside{position:fixed;top:14px;left:14px;bottom:14px;width:380px;z-index:600;overflow:auto;padding:20px;border-radius:30px;
+      display:flex;flex-direction:column;gap:12px;color:var(--text);
+      background:var(--sheen),var(--glass-strong);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);
+      border:1px solid var(--edge);box-shadow:var(--hi),var(--shadow)}
+    @media (max-width:800px){ #ed aside{top:auto;left:8px;right:8px;bottom:8px;width:auto;height:56%;border-radius:26px} }
+
+    .ed-head{display:flex;align-items:baseline;gap:10px;justify-content:space-between}
+    .ed-head h1{margin:0;font-size:24px;font-weight:800;letter-spacing:-.03em}
+    .ed-head a{font-size:13px;font-weight:600;text-decoration:none}
+    .ed-search{display:flex;gap:6px}
+    .ed-search input,.ed-form input:not([type]),.ed-form textarea{width:100%;background:var(--glass-nested);border:1px solid var(--edge-soft);
+      color:var(--text);border-radius:14px;padding:10px 13px;font:inherit;font-size:14px;outline:none;
+      box-shadow:inset 0 1px 3px rgba(0,0,0,.06);transition:border-color .2s,box-shadow .2s}
+    .ed-search input:focus,.ed-form input:focus,.ed-form textarea:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(10,132,255,.22)}
+    ::placeholder{color:var(--sub)}
+    .ed-search button{border-radius:999px;padding:0 16px;font-weight:700;font-size:14px;
+      background:var(--sheen),var(--glass-nested);border:1px solid var(--edge-soft);box-shadow:var(--hi)}
+    .ed-banner{background:rgba(255,204,0,.18);border:1px solid rgba(255,204,0,.5);border-radius:18px;padding:11px 13px;font-size:13px;line-height:1.4}
+    .ed-banner button{margin-top:7px;background:#ffcc00;color:#2a2200;border:0;border-radius:999px;padding:6px 12px;font-weight:700;font-size:12px}
+    .tip{margin:0;font-size:13px;color:var(--sub);line-height:1.45}
+    .tip b{color:var(--text)}
+    kbd{font:inherit;font-size:11px;padding:1px 6px;border-radius:6px;border:1px solid var(--edge-soft);background:var(--glass-nested)}
+    .ed-form{padding:12px;display:flex;flex-direction:column;gap:10px;border:1.5px solid var(--accent)!important;
+      box-shadow:var(--hi),0 0 0 4px rgba(10,132,255,.12)!important}
+    .ed-form label{font-size:12px;font-weight:700;color:var(--sub);display:flex;flex-direction:column;gap:5px}
+    .ed-form textarea{resize:vertical}
+    .photo-box{height:170px;border-radius:16px;border:1.5px dashed var(--sub);display:grid;place-items:center;text-align:center;
+      font-size:13px;color:var(--sub);cursor:pointer;position:relative;overflow:hidden;background:var(--glass-nested);transition:.2s}
+    .photo-box.over{border-color:var(--accent);background:rgba(10,132,255,.15)}
+    .photo-box img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+    .ed-row{display:flex;gap:8px;justify-content:space-between}
+    .ed-h{margin:6px 0 0;font-size:17px;font-weight:800;display:flex;align-items:center;gap:8px;letter-spacing:-.02em}
+    #list{display:flex;flex-direction:column;gap:7px}
+    .ed-item{display:flex;align-items:center;gap:11px;padding:7px 10px;text-align:left;border-radius:18px;
+      background:var(--sheen),var(--glass-nested);border:1.5px solid var(--edge-soft);box-shadow:var(--hi);transition:transform .15s}
+    .ed-item:hover{transform:translateX(2px)}
+    .ed-item.sel{border-color:var(--accent);box-shadow:var(--hi),0 0 0 3px rgba(10,132,255,.18)}
+    .ed-item .th{width:40px;height:40px;flex:none;border-radius:50%;overflow:hidden;display:grid;place-items:center;color:#fff;
+      background:var(--accent-grad);border:2px solid rgba(255,255,255,.9);box-shadow:0 2px 8px rgba(0,0,0,.15)}
+    .ed-item .th img{width:100%;height:100%;object-fit:cover}
+    .ed-item .nm{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .ed-auto{display:flex;gap:12px;align-items:flex-start;padding:13px;font-size:13px;line-height:1.45;border-radius:20px;
+      background:var(--sheen),var(--glass-nested);border:1px solid var(--edge-soft);box-shadow:var(--hi);cursor:pointer}
+    .ed-auto span{color:var(--sub)} .ed-auto b{color:var(--text)}
+    .ed-foot{margin-top:auto;display:flex;flex-direction:column;gap:2px;font-size:13px}
+    .ed-foot .btn{margin-top:8px}
+    .ed-foot details{margin-top:10px;line-height:1.5;color:var(--sub)}
+    .ed-foot summary{cursor:pointer;color:var(--accent);font-weight:600}
+    .ed-foot ol{padding-left:20px;margin:6px 0}
+
+    .editor .stop .disc{animation:none}
+    .stop.sel .disc{transform:scale(1.18);box-shadow:0 0 0 3px rgba(255,214,10,.8),0 0 22px rgba(255,214,10,.9),0 4px 10px rgba(0,0,0,.3)}
+    .auto-stop{width:30px;height:30px;border-radius:50%;overflow:hidden;position:relative;display:grid;place-items:center;font-size:13px;
+      color:#fff;background:rgba(120,130,150,.55);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+      border:2px solid rgba(255,255,255,.9);box-shadow:0 3px 8px rgba(0,0,0,.25)}
+    .auto-stop img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:grayscale(.55);opacity:.9}
+    .auto-stop.off{border:2px dashed #ff453a;opacity:.5}
+    .ed-pop{display:flex;flex-direction:column;gap:7px;min-width:200px;color:var(--text);font-family:var(--font)}
+    .ed-pop img{width:100%;height:115px;object-fit:cover;border-radius:14px}
+    .ed-pop b{font-size:15px}
+    .ed-pop .muted{margin:0}
+    .ed-pop .off-txt{color:#ff453a;font-size:12px;font-weight:700}
+    .ed-pop button{border-radius:999px;padding:8px;font-weight:700;font-size:13px;color:var(--text);
+      background:var(--sheen),var(--glass-nested);border:1px solid var(--edge-soft);box-shadow:var(--hi)}
+    .ed-pop button[data-act=own]{color:#fff;background:var(--sheen),var(--accent-grad);border-color:rgba(255,255,255,.5)}
+    .leaflet-top.leaflet-right{margin-top:4px;margin-right:4px}
+  </style>
+</head>
+<body class="editor">
+  <div id="ed">
+    <aside>
+      <header class="ed-head"><h1>Editor de paradas</h1><a href="./">← Volver al juego</a></header>
+
+      <form id="search" class="ed-search">
+        <input id="q" placeholder="Buscar un sitio (ej. Plaza Mayor, Salamanca)">
+        <button>Buscar</button>
+      </form>
+
+      <div id="banner" class="ed-banner" hidden></div>
+
+      <p class="tip">🖱️ <b>Haz clic en el mapa</b> para crear una parada. <b>Arrástrala</b> para moverla. <kbd>Esc</kbd> para deseleccionar.</p>
+
+      <div id="form" class="ed-form nested" hidden>
+        <div id="photoBox" class="photo-box" title="Cambiar foto">
+          <img id="fPhotoImg" alt="" hidden>
+          <span id="fPhotoTxt">📷 Arrastra aquí una foto<br>o haz clic para elegirla</span>
+        </div>
+        <input type="file" id="fFile" accept="image/*" hidden>
+        <input id="fFotoUrl" placeholder="…o pega la dirección (URL) de una imagen">
+        <label>Nombre <input id="fNombre" maxlength="80" placeholder="Ej. Fuente del parque"></label>
+        <label>Descripción <textarea id="fDesc" rows="3" maxlength="400" placeholder="Algo curioso sobre este sitio"></textarea></label>
+        <div id="fCoords" class="muted"></div>
+        <div class="ed-row">
+          <button type="button" id="fQuitarFoto" class="btn secondary small">Quitar foto</button>
+          <button type="button" id="fBorrar" class="btn danger small">🗑 Borrar parada</button>
+        </div>
+      </div>
+
+      <h3 class="ed-h">Tus paradas <span id="count" class="tag">0</span></h3>
+      <div id="list"></div>
+
+      <label class="ed-auto">
+        <input type="checkbox" id="chkAuto">
+        <span><b>Paradas automáticas</b> en sitios chulos de OpenStreetMap (miradores, monumentos, fuentes, museos, parques…).
+        Acerca el mapa para verlas en gris; haz clic en una para ocultarla o hacerla tuya.</span>
+      </label>
+      <div id="autoStatus" class="muted"></div>
+
+      <footer class="ed-foot">
+        <div id="dirty" class="muted"></div>
+        <button id="btnDownload" class="btn">⬇ Descargar paradas.json</button>
+        <button id="btnOpen" class="btn secondary">📂 Abrir un paradas.json</button>
+        <input type="file" id="openFile" accept=".json,application/json" hidden>
+        <details>
+          <summary>¿Cómo lo paso al juego?</summary>
+          <ol>
+            <li>Pulsa <b>Descargar paradas.json</b>.</li>
+            <li>En tu repositorio de GitHub: <b>Add file → Upload files</b>.</li>
+            <li>Arrastra el <code>paradas.json</code> descargado (sustituye al anterior) y pulsa <b>Commit changes</b>.</li>
+            <li>En 1–2 minutos las paradas estarán en el juego.</li>
+          </ol>
+        </details>
+      </footer>
+    </aside>
+    <div id="map"></div>
+  </div>
+  <div id="toast"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="config.js"></script>
+  <script src="osm.js"></script>
+  <script src="editor.js"></script>
+</body>
+</html>

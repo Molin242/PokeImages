@@ -1,0 +1,12 @@
+{
+ "auto": true,
+ "ocultas": [],
+ "paradas": [
+  { "id": "p_sol", "nombre": "Puerta del Sol", "descripcion": "El Kilómetro 0: desde aquí se miden las carreteras de España.", "lat": 40.41669, "lng": -3.70358, "foto": "" },
+  { "id": "p_plazamayor", "nombre": "Plaza Mayor", "descripcion": "Plaza porticada del siglo XVII con la estatua de Felipe III.", "lat": 40.41553, "lng": -3.70742, "foto": "" },
+  { "id": "p_palacio", "nombre": "Palacio Real", "descripcion": "Uno de los palacios más grandes de Europa.", "lat": 40.41794, "lng": -3.71428, "foto": "" },
+  { "id": "p_debod", "nombre": "Templo de Debod", "descripcion": "Un templo egipcio de verdad, con las mejores puestas de sol.", "lat": 40.42402, "lng": -3.71776, "foto": "" },
+  { "id": "p_cibeles", "nombre": "Fuente de Cibeles", "descripcion": "La diosa Cibeles en su carro tirado por leones.", "lat": 40.41931, "lng": -3.69311, "foto": "" },
+  { "id": "p_retiro", "nombre": "Estanque del Retiro", "descripcion": "Barcas, músicos y el monumento a Alfonso XII.", "lat": 40.41804, "lng": -3.68316, "foto": "" }
+ ]
+}

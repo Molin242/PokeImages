@@ -14,8 +14,8 @@ imagen nueva a la carpeta `imagenes/`, aparece en el juego para todos.
 ## Ponerla en marcha (10 minutos)
 
 1. Crea un repositorio **público** en GitHub (por ejemplo `fotocaza`).
-2. Sube todos estos archivos a la raíz del repositorio (`index.html`, `app.js`, `style.css`, `config.js`,
-   `sw.js`, `manifest.webmanifest`, `icon.svg` y la carpeta `imagenes/`).
+2. Sube todos estos archivos a la raíz del repositorio (`index.html`, `app.js`, `osm.js`, `style.css`, `config.js`,
+   `sw.js`, `manifest.webmanifest`, `icon.svg`, `editor.html`, `editor.js`, `paradas.json` y la carpeta `imagenes/`).
 3. En el repositorio: **Settings → Pages → Source: Deploy from a branch → `main` / `(root)` → Save**.
 4. En un par de minutos la app estará en `https://TU-USUARIO.github.io/fotocaza/`.
 5. Ábrela en el móvil y, en el menú del navegador, pulsa **"Añadir a pantalla de inicio"** / **"Instalar app"**.
@@ -24,20 +24,76 @@ No hace falta configurar nada: al estar en GitHub Pages, la app detecta sola de 
 
 ## Añadir criaturas
 
-Sube imágenes a `imagenes/` (desde la web de GitHub: *Add file → Upload files*). El nombre del archivo es el nombre de la criatura:
+Sube imágenes a `imagenes/` (desde la web de GitHub: *Add file → Upload files*). El nombre del archivo es el nombre de la criatura.
+
+**Categorías:** la subcarpeta decide la sección del álbum (`imagenes/bichos/…`, `imagenes/pokemon/…`).
+Las imágenes sueltas en `imagenes/` van a «Otros».
+
+**Rarezas**, de más fácil a más difícil de encontrar y de capturar (y con más experiencia):
+
+| Rareza | Probabilidad de aparecer |
+|---|---|
+| Común | ~50 % |
+| Raro | ~25 % |
+| Superraro | ~12 % |
+| Épico | ~7 % |
+| Legendario | ~3,5 % |
+| Mítico | ~1,6 % |
+| Astral | ~0,7 % |
+| Secreto | ~0,2 % |
+
+(Si una rareza no tiene ninguna imagen, su probabilidad se reparte entre las demás.)
 
 | Archivo | Criatura |
 |---|---|
-| `gato.png` | Gato · común |
-| `perro_raro.jpg` | Perro · rara |
-| `dragon_de_fuego_epico.png` | Dragon de fuego · épica |
-| `profe_legendario.webp` | Profe · legendaria |
-| `raro/pato.png` | Pato · rara (por la subcarpeta) |
+| `gato.png` | Gato · Otros · común |
+| `bichos/mariquita_raro.png` | Mariquita · Bichos · rara |
+| `bichos/legendario/escarabajo.png` | Escarabajo · Bichos · legendaria |
+| `pokemon/pato_superraro.png` | Pato · Pokemon · superrara |
+| `pokemon/fantasma_secreto.png` | Fantasma · Pokemon · secreta |
 
+Las secretas ni siquiera muestran su silueta en el álbum hasta capturarlas.
 Los PNG con fondo transparente quedan mucho mejor. Las imágenes nuevas tardan hasta 10 minutos en aparecer
 (o pulsa **Ajustes → Recargar**).
 
 Mientras la carpeta esté vacía, la app usa unas criaturas de demostración.
+
+## Orbes y paradas
+
+Cada lanzamiento gasta un **orbe** (empiezas con 30). Para conseguir más, ve a una **parada** del mapa
+(los postes azules con foto), tócala cuando estés cerca y pulsa **Recoger orbes**: te da de 3 a 5 orbes
+(más en la primera visita) y experiencia. Después se pone morada y se recarga a los 5 minutos.
+
+### Todocoins y abono
+
+Las paradas también dan **todocoins** (2 a 4 por visita, 5 más la primera vez; empiezas con 10).
+Sirven para **abonar una parada**: en su panel pulsa *Abonar esta parada*, elige **5, 10, 12, 20 o 24 horas**
+(cuesta 1 todocoin por hora) y confirma estando cerca. Cuando pase ese tiempo, junto a la parada brotará una
+criatura **rara o mejor** que solo verás tú (la parada muestra 🌱 mientras crece y ✨ cuando está lista).
+Cuanto más tiempo, más probabilidad de rarezas altas; el panel enseña los porcentajes antes de abonar.
+Las criaturas brotadas no huyen. Solo puede haber un abono a la vez en cada parada.
+En **Modo prueba** las horas duran un minuto, para poder probarlo rápido.
+
+Hay dos tipos de paradas:
+
+- **Automáticas:** salen solas en sitios chulos de cualquier ciudad (miradores, monumentos, fuentes,
+  museos, parques, obras de arte…) gracias a OpenStreetMap, muchas con foto.
+- **Vuestras:** las que pongáis con el editor, con vuestro nombre, descripción y foto.
+
+### Editor de paradas (desde el ordenador)
+
+Abre `https://TU-USUARIO.github.io/fotocaza/editor.html` en el ordenador. También hay un enlace en **Ajustes**.
+
+- **Clic en el mapa** para crear una parada; **arrástrala** para moverla.
+- Ponle nombre y descripción, y una **foto**: arrástrala al recuadro, haz clic para elegirla o pégala con Ctrl+V.
+  Se reduce sola y se guarda dentro del archivo.
+- Acerca el mapa para ver las paradas automáticas en gris. Haz clic en una para **ocultarla** del juego
+  o **hacerla tuya** y editarla. También puedes desactivarlas todas.
+- Cuando acabes, pulsa **Descargar paradas.json** y súbelo al repositorio (**Add file → Upload files**),
+  sustituyendo el anterior. En 1 o 2 minutos estará en el juego.
+
+El editor recuerda tu trabajo en ese ordenador aunque cierres la pestaña.
+`paradas.json` trae de ejemplo algunas paradas en el centro de Madrid: bórralas o cámbialas a tu gusto.
 
 ## Ajustes (`config.js`)
 
@@ -45,6 +101,10 @@ Mientras la carpeta esté vacía, la app usa unas criaturas de demostración.
 - `folder`: carpeta de las imágenes.
 - `catchRadius`: metros a los que se puede capturar (60 por defecto).
 - `slotMinutes`, `cellSize`, `cellRange`: cada cuánto cambian y cuántas criaturas aparecen.
+- `orbsStart`, `orbsMax`: orbes iniciales y máximo en la mochila.
+- `stopCooldownMin`: minutos hasta poder volver a usar una parada.
+- `coinsStart`, `coinsPerHour`: todocoins iniciales y coste del abono por hora.
+- `autoParadas`: `false` para quitar las paradas automáticas.
 
 ## Probar en el ordenador
 

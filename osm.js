@@ -7,6 +7,11 @@ window.OSM = (() => {
   const KEY = 'fotocaza_osm_';
   const MAX_POR_CELDA = 25;
   const SEPARACION = 70;           // metros mínimos entre paradas automáticas
+  const SERVIDORES = [
+    'https://overpass-api.de/api/interpreter',
+    'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter'
+  ];
 
   const TIPOS = {
     tourism:  { viewpoint: ['Mirador', 1], attraction: ['Lugar de interés', 1], artwork: ['Obra de arte', 2],
@@ -19,6 +24,7 @@ window.OSM = (() => {
 
   const memoria = new Map();       // "cx_cy" -> lista
   const pendientes = new Set();
+  const fallos = new Map();        // "cx_cy" -> momento del último error (no reintentar enseguida)
   let cola = Promise.resolve();
 
   const cellOf = (lat, lng) => [Math.floor(lat / CELL), Math.floor(lng / CELL)];
@@ -54,13 +60,21 @@ window.OSM = (() => {
   async function descargar(cx, cy) {
     const s = cx * CELL, w = cy * CELL;
     const bbox = `${s.toFixed(4)},${w.toFixed(4)},${(s + CELL).toFixed(4)},${(w + CELL).toFixed(4)}`;
-    const r = await fetch('https://overpass-api.de/api/interpreter', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'data=' + encodeURIComponent(consulta(bbox))
-    });
-    if (!r.ok) throw new Error('Overpass ' + r.status);
-    const datos = await r.json();
+    let datos = null, error = null;
+    for (const url of SERVIDORES) { // si un servidor está saturado se prueba el siguiente
+      try {
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'data=' + encodeURIComponent(consulta(bbox)),
+          signal: AbortSignal.timeout(20000)
+        });
+        if (!r.ok) throw new Error('Overpass ' + r.status);
+        datos = await r.json();
+        break;
+      } catch (e) { error = e; }
+    }
+    if (!datos) throw error;
     const todos = datos.elements.map(convertir).filter(Boolean)
       .sort((a, b) => a.prio - b.prio || (b.foto ? 1 : 0) - (a.foto ? 1 : 0));
     const elegidos = [];
@@ -89,7 +103,7 @@ window.OSM = (() => {
     const faltan = celdas.filter(([cx, cy]) => {
       const k = `${cx}_${cy}`, c = leerCache(k);
       if (c && !memoria.has(k)) memoria.set(k, c.list);
-      return (!c || Date.now() - c.t > TTL) && !pendientes.has(k);
+      return (!c || Date.now() - c.t > TTL) && !pendientes.has(k) && !(Date.now() - (fallos.get(k) || 0) < 120e3);
     });
     if (!faltan.length) return;
     let hechas = 0;
@@ -103,13 +117,14 @@ window.OSM = (() => {
           try { localStorage.setItem(KEY + k, JSON.stringify({ t: Date.now(), list })); } catch {}
         } catch (e) {
           console.warn('No se pudieron cargar sitios de OpenStreetMap', e);
+          fallos.set(k, Date.now());
           if (!memoria.has(k)) memoria.set(k, []);
           await new Promise(r => setTimeout(r, 3000)); // margen si el servidor está ocupado
         } finally {
           pendientes.delete(k);
           hechas++;
-          onProgress?.(hechas, faltan.length);
           onUpdate?.();
+          onProgress?.(hechas, faltan.length);
         }
       });
     }

@@ -6,7 +6,8 @@ const CFG = Object.assign({
   owner: '', repo: '', branch: '', folder: 'imagenes',
   catchRadius: 60, cellSize: 0.0015, cellRange: 2, slotMinutes: 15,
   defaultLocation: [40.4168, -3.7038],
-  orbsStart: 30, orbsMax: 100, stopCooldownMin: 5, autoParadas: true, stopViewRadius: 1500
+  orbsStart: 30, orbsMax: 100, stopCooldownMin: 5, autoParadas: true, stopViewRadius: 1500,
+  coinsStart: 10, coinsPerHour: 1
 }, window.FOTOCAZA_CONFIG || {});
 
 const $ = s => document.querySelector(s);
@@ -15,25 +16,40 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 // ---------------------------------------------------------------- Rarezas
+// weight = probabilidad relativa de aparecer (cada una es más rara que la anterior)
+// catch = probabilidad base de captura · flee = probabilidad de huir al escaparse del orbe
 const RAR = {
-  comun:      { label: 'Común',      weight: 60, catch: 0.85, flee: 0.05, xp: 100 },
-  raro:       { label: 'Raro',       weight: 25, catch: 0.60, flee: 0.12, xp: 250 },
-  epico:      { label: 'Épico',      weight: 12, catch: 0.40, flee: 0.20, xp: 600 },
-  legendario: { label: 'Legendario', weight: 3,  catch: 0.20, flee: 0.30, xp: 1500 }
+  comun:      { label: 'Común',      weight: 50,   catch: 0.85, flee: 0.05, xp: 100 },
+  raro:       { label: 'Raro',       weight: 25,   catch: 0.65, flee: 0.10, xp: 200 },
+  superraro:  { label: 'Superraro',  weight: 12,   catch: 0.50, flee: 0.14, xp: 350 },
+  epico:      { label: 'Épico',      weight: 7,    catch: 0.40, flee: 0.18, xp: 600 },
+  legendario: { label: 'Legendario', weight: 3.5,  catch: 0.28, flee: 0.24, xp: 1200 },
+  mitico:     { label: 'Mítico',     weight: 1.6,  catch: 0.20, flee: 0.30, xp: 2000 },
+  astral:     { label: 'Astral',     weight: 0.7,  catch: 0.13, flee: 0.36, xp: 3500 },
+  secreto:    { label: 'Secreto',    weight: 0.2,  catch: 0.08, flee: 0.45, xp: 6000 }
 };
-const RAR_ORDER = ['comun', 'raro', 'epico', 'legendario'];
-const RAR_ALIAS = { comun:'comun', comunes:'comun', raro:'raro', rara:'raro', raros:'raro', raras:'raro',
-  epico:'epico', epica:'epico', epicos:'epico', epicas:'epico',
-  legendario:'legendario', legendaria:'legendario', legendarios:'legendario', legendarias:'legendario' };
-// [amplitud horizontal (fracción de pantalla), velocidad]
-const MOVE = { comun: [0.06, 0.7], raro: [0.14, 1.0], epico: [0.22, 1.3], legendario: [0.28, 1.7] };
+const RAR_ORDER = Object.keys(RAR);
+// Nombres aceptados en archivos y carpetas (sin tildes, mayúsculas ni separadores)
+const RAR_ALIAS = {};
+const alias = (k, ...ws) => ws.forEach(w => { RAR_ALIAS[w] = k; });
+alias('comun', 'comun', 'comunes', 'common');
+alias('raro', 'raro', 'rara', 'raros', 'raras', 'rare');
+alias('superraro', 'superraro', 'superrara', 'superraros', 'superraras', 'muyraro', 'muyrara', 'superrare');
+alias('epico', 'epico', 'epica', 'epicos', 'epicas', 'epic');
+alias('legendario', 'legendario', 'legendaria', 'legendarios', 'legendarias', 'legendary');
+alias('mitico', 'mitico', 'mitica', 'miticos', 'miticas', 'mythic', 'mythical');
+alias('astral', 'astral', 'astrales');
+alias('secreto', 'secreto', 'secreta', 'secretos', 'secretas', 'secret');
+// [amplitud horizontal (fracción de pantalla), velocidad]: las más raras se mueven más
+const MOVE = { comun: [0.06, 0.7], raro: [0.10, 0.9], superraro: [0.14, 1.0], epico: [0.18, 1.2],
+  legendario: [0.22, 1.4], mitico: [0.25, 1.6], astral: [0.28, 1.8], secreto: [0.30, 2.1] };
 
 // ---------------------------------------------------------------- Partida guardada
 const SAVE_KEY = 'fotocaza_v1';
 let save;
 try { save = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}'); } catch { save = {}; }
 save = Object.assign({ caught: {}, first: {}, xp: 0, gone: {}, dev: false, cam: false,
-  orbs: CFG.orbsStart, stops: {}, visited: {} }, save);
+  orbs: CFG.orbsStart, stops: {}, visited: {}, coins: CFG.coinsStart, fert: {} }, save);
 for (const k in save.gone) if (Date.now() - save.gone[k] > 864e5) delete save.gone[k];
 const persist = () => localStorage.setItem(SAVE_KEY, JSON.stringify(save));
 
@@ -65,17 +81,30 @@ function toast(msg, ms = 2600) {
 // ---------------------------------------------------------------- Imágenes del repositorio
 const IMG_RE = /\.(png|jpe?g|gif|webp|svg|avif)$/i;
 
+const rarKey = s => RAR_ALIAS[stripAccents(String(s).toLowerCase()).replace(/[\s_\-]+/g, '')] || null;
+const pretty = s => { s = s.replace(/[_\-]+/g, ' ').trim(); return s.charAt(0).toUpperCase() + s.slice(1); };
+
+/* Ruta dentro de la carpeta de imágenes → criatura.
+   imagenes/bichos/mariquita_raro.png     → «Mariquita», categoría Bichos, rara
+   imagenes/pokemon/legendario/dragon.png → «Dragon», categoría Pokemon, legendaria
+   imagenes/gato.png                      → «Gato», categoría Otros, común            */
 function parseCreature(relPath, url) {
   const parts = relPath.split('/');
   const file = parts.pop().normalize('NFC');
   let base = file.replace(IMG_RE, '');
-  let rarity = 'comun';
-  const m = stripAccents(base.toLowerCase()).match(/[_\- ]([a-z]+)$/);
-  if (m && RAR_ALIAS[m[1]]) { rarity = RAR_ALIAS[m[1]]; base = base.slice(0, base.length - m[0].length); }
-  else for (const p of parts) { const r = RAR_ALIAS[stripAccents(p.toLowerCase())]; if (r) rarity = r; }
-  let name = base.replace(/[_\-]+/g, ' ').trim() || 'Sin nombre';
-  name = name.charAt(0).toUpperCase() + name.slice(1);
-  return { id: relPath, name, rarity, url };
+  let rarity = null, category = null;
+  // Rareza al final del nombre: primero dos palabras ("_super_raro"), luego una ("_epico")
+  for (const re of [/[_\- ]([^_\- ]+[_\- ][^_\- ]+)$/, /[_\- ]([^_\- ]+)$/]) {
+    const m = base.match(re);
+    if (m && rarKey(m[1])) { rarity = rarKey(m[1]); base = base.slice(0, base.length - m[0].length); break; }
+  }
+  // Carpetas: las que se llaman como una rareza dan la rareza; la primera que no, la categoría
+  for (const p of parts) {
+    const r = rarKey(p);
+    if (r) { if (!rarity) rarity = r; }
+    else if (!category) category = pretty(p.normalize('NFC'));
+  }
+  return { id: relPath, name: pretty(base) || 'Sin nombre', rarity: rarity || 'comun', category: category || 'Otros', url };
 }
 
 function detectRepo() {
@@ -95,7 +124,7 @@ async function loadCreatures(force) {
   if (src) {
     const key = `${src.owner}/${src.repo}/${folder}`;
     let cache = null;
-    try { cache = JSON.parse(localStorage.getItem('fotocaza_cache') || 'null'); } catch {}
+    try { cache = JSON.parse(localStorage.getItem('fotocaza_cache_v2') || 'null'); } catch {}
     if (!force && cache && cache.key === key && Date.now() - cache.t < 10 * 60e3)
       return { list: cache.list, source: `GitHub · ${key}` };
     try {
@@ -114,7 +143,7 @@ async function loadCreatures(force) {
         .map(n => parseCreature(n.path.slice(prefix.length),
           `https://raw.githubusercontent.com/${src.owner}/${src.repo}/${encodeURIComponent(branch)}/${n.path.split('/').map(encodeURIComponent).join('/')}`))
         .sort((a, b) => a.id.localeCompare(b.id));
-      localStorage.setItem('fotocaza_cache', JSON.stringify({ key, t: Date.now(), list }));
+      localStorage.setItem('fotocaza_cache_v2', JSON.stringify({ key, t: Date.now(), list }));
       if (list.length) return { list, source: `GitHub · ${key}` };
       toast(`La carpeta "${folder}" del repositorio está vacía. Usando criaturas de demostración.`, 5000);
     } catch (e) {
@@ -137,10 +166,13 @@ async function loadCreatures(force) {
 }
 
 function demoCreatures() {
-  const defs = [['Burbujín','comun','#4fc3f7'],['Musgoso','comun','#81c784'],['Chispín','comun','#ffd54f'],
-    ['Rocaldo','comun','#a1887f'],['Nebulina','raro','#9575cd'],['Coralia','raro','#f06292'],
-    ['Glaciar','epico','#80deea'],['Magmo','epico','#ff7043'],['Aurora','legendario','#ffca28']];
-  return defs.map(([name, rarity, color], i) => ({ id: 'demo/' + name, name, rarity, url: blobSvg(color, i) }));
+  const defs = [
+    ['Burbujín','comun','#4fc3f7','Gominolas'], ['Musgoso','comun','#81c784','Gominolas'], ['Chispín','comun','#ffd54f','Gominolas'],
+    ['Rocaldo','raro','#a1887f','Gominolas'], ['Coralia','superraro','#f06292','Gominolas'],
+    ['Nebulina','raro','#9575cd','Elementales'], ['Glaciar','epico','#80deea','Elementales'], ['Magmo','legendario','#ff7043','Elementales'],
+    ['Floralia','mitico','#ff6fd8','Elementales'], ['Aurora','astral','#7c8cff','Cósmicos'], ['Umbra','secreto','#3a3a4a','Cósmicos']];
+  return defs.map(([name, rarity, color, category], i) =>
+    ({ id: 'demo/' + name, name, rarity, category, url: blobSvg(color, i) }));
 }
 function blobSvg(color, seed) {
   const r = seeded('blob' + seed), n = 9, pts = [];
@@ -265,8 +297,12 @@ function refreshStops() {
       stopMarkers.set(s.id, m);
     }
     m.stop = s;
-    m.getElement()?.firstElementChild?.classList.toggle('used', stopReadyIn(s) > 0);
+    const el = m.getElement()?.firstElementChild, f = save.fert[s.id];
+    el?.classList.toggle('used', stopReadyIn(s) > 0);
+    el?.classList.toggle('growing', !!f && f.ready > Date.now());
+    el?.classList.toggle('bloom', !!f && f.ready <= Date.now());
   }
+  refreshFert();
 }
 
 const stopPanel = $('#stopPanel');
@@ -280,38 +316,164 @@ function openStop(s) {
   $('#stopName').textContent = s.nombre;
   $('#stopDesc').textContent = s.descripcion || '';
   $('#stopGain').textContent = '';
+  fertUI = null; fertKey = '';
   stopPanel.hidden = false;
   updateStopPanel();
   clearInterval(stopTimer); stopTimer = setInterval(updateStopPanel, 1000);
 }
-function closeStop() { stopPanel.hidden = true; openStopData = null; clearInterval(stopTimer); }
+function closeStop() { stopPanel.hidden = true; openStopData = null; clearInterval(stopTimer); refreshStops(); }
 function updateStopPanel() {
   const s = openStopData; if (!s || !player) return;
   const d = distM(player, s), wait = stopReadyIn(s), btn = $('#stopBtn');
+  const inRange = d <= CFG.catchRadius || save.dev;
   $('#stopDisc').classList.toggle('used', wait > 0);
   let txt = '', ok = false;
-  if (wait > 0) { const sec = Math.ceil(wait / 1000); txt = `Disponible en ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; }
-  else if (d > CFG.catchRadius && !save.dev) txt = `Acércate más (estás a ${Math.round(d)} m)`;
-  else if (save.orbs >= CFG.orbsMax) txt = `Mochila llena (${CFG.orbsMax} orbes)`;
-  else { txt = 'Recoger orbes'; ok = true; }
+  if (wait > 0) txt = `Disponible en ${fmtDur(wait)}`;
+  else if (!inRange) txt = `Acércate más (estás a ${Math.round(d)} m)`;
+  else { txt = 'Recoger'; ok = true; }
   btn.textContent = txt; btn.disabled = !ok;
-  $('#stopInfo').textContent = `${s.custom ? 'Parada del grupo' : 'Sitio de OpenStreetMap'} · ${Math.round(d)} m · tienes ${save.orbs} orbes`;
+  $('#stopInfo').innerHTML = `${s.custom ? 'Parada del grupo' : 'Sitio de OpenStreetMap'} · ${Math.round(d)} m<br>
+    Tienes <i class="mini-orb"></i> ${save.orbs} orbes · <i class="coin"></i> ${save.coins} todocoins`;
+  renderFertBox(s, inRange);
 }
 function collectStop() {
   const s = openStopData;
   if (!s || $('#stopBtn').disabled) return;
   const first = !save.visited[s.id];
-  const n = Math.min(CFG.orbsMax - save.orbs, 3 + Math.floor(Math.random() * 3) + (first ? 5 : 0));
+  const n = Math.max(0, Math.min(CFG.orbsMax - save.orbs, 3 + Math.floor(Math.random() * 3) + (first ? 5 : 0)));
+  const coins = 2 + Math.floor(Math.random() * 3) + (first ? 5 : 0);
   const xp = 50 + (first ? 250 : 0), prevLvl = levelOf(save.xp);
-  save.orbs += n; save.xp += xp; save.stops[s.id] = Date.now(); save.visited[s.id] = true;
+  save.orbs += n; save.coins += coins; save.xp += xp; save.stops[s.id] = Date.now(); save.visited[s.id] = true;
   persist(); updateHud();
   const disc = $('#stopDisc');
   disc.classList.remove('spin'); void disc.offsetWidth; disc.classList.add('spin');
   const g = $('#stopGain');
-  g.innerHTML = `+${n} orbes · +${xp} XP${first ? '<br><small>¡Primera visita!</small>' : ''}${levelOf(save.xp) > prevLvl ? `<br><b>¡Nivel ${levelOf(save.xp)}!</b>` : ''}`;
+  g.innerHTML = `+${n} <i class="mini-orb"></i> · +${coins} <i class="coin"></i> · +${xp} XP` +
+    (n ? '' : '<br><small>Mochila de orbes llena</small>') +
+    (first ? '<br><small>¡Primera visita!</small>' : '') +
+    (levelOf(save.xp) > prevLvl ? `<br><b>¡Nivel ${levelOf(save.xp)}!</b>` : '');
   g.classList.remove('pop'); void g.offsetWidth; g.classList.add('pop');
   updateStopPanel(); refreshStops();
 }
+function fmtDur(ms) {
+  const t = Math.max(0, Math.ceil(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), sec = t % 60;
+  return h ? `${h} h ${m} min` : m ? `${m} min ${sec} s` : `${sec} s`;
+}
+
+// ---------------------------------------------------------------- Todocoins y abono de paradas
+// Abonas una parada durante X horas; al terminar brota junto a ella una criatura rara o mejor.
+// Cuantas más horas, más probabilidad de las rarezas altas.
+const FERT_HOURS = [5, 10, 12, 20, 24];
+const fertCost = h => h * CFG.coinsPerHour;
+const hourMs = () => save.dev ? 60e3 : 3600e3;   // en modo prueba las "horas" duran un minuto
+const fertUnit = () => save.dev ? 'min' : 'h';
+const pct = x => { const v = x * 100; return (v > 0 && v < 1 ? v.toFixed(1) : Math.round(v)) + ' %'; };
+function fertWeights(h) {
+  const f = 1 + h / 24; // cada nivel de rareza se multiplica: 5 h → ×1,2 · 24 h → ×2
+  return RAR_ORDER.slice(1).filter(r => creatures.some(c => c.rarity === r))
+    .map(r => [r, RAR[r].weight * Math.pow(f, RAR_ORDER.indexOf(r) - 1)]);
+}
+function fertOdds(h, from) {
+  const w = fertWeights(h), tot = w.reduce((a, x) => a + x[1], 0);
+  if (!tot) return 0;
+  return w.filter(([r]) => RAR_ORDER.indexOf(r) >= RAR_ORDER.indexOf(from)).reduce((a, x) => a + x[1], 0) / tot;
+}
+function rollFert(h) {
+  const w = fertWeights(h);
+  let rar;
+  if (!w.length) rar = [...RAR_ORDER].reverse().find(r => creatures.some(c => c.rarity === r)); // solo hay comunes
+  else {
+    let x = Math.random() * w.reduce((a, v) => a + v[1], 0);
+    rar = w[w.length - 1][0];
+    for (const [r, v] of w) { x -= v; if (x <= 0) { rar = r; break; } }
+  }
+  const pool = creatures.filter(c => c.rarity === rar);
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+function fertilize(s, h) {
+  const cost = fertCost(h);
+  if (save.coins < cost || save.fert[s.id]) return;
+  const c = rollFert(h);
+  if (!c) { toast('No hay criaturas en el repositorio'); return; }
+  save.coins -= cost;
+  const now = Date.now();
+  save.fert[s.id] = { start: now, ready: now + h * hourMs(), hours: h, cid: c.id, rarity: c.rarity,
+    lat: s.lat, lng: s.lng, nombre: s.nombre };
+  persist(); updateHud(); fertUI = null;
+  toast(`🌱 Parada abonada. Vuelve en ${h} ${fertUnit()}`);
+  updateStopPanel(); refreshStops();
+}
+function fertSpawn(stopId) {
+  const f = save.fert[stopId];
+  const creature = creatures.find(c => c.id === f.cid) || creatures.find(c => c.rarity === f.rarity) || creatures[0];
+  return { id: 'fert_' + stopId, stopId, fert: true, lat: f.lat + 0.00012, lng: f.lng + 0.00012, creature };
+}
+const fertMarkers = new Map();
+function refreshFert() {
+  const now = Date.now();
+  for (const [id, m] of fertMarkers) if (!save.fert[id] || save.fert[id].ready > now) { map.removeLayer(m); fertMarkers.delete(id); }
+  if (!creatures.length) return;
+  for (const id in save.fert) {
+    const f = save.fert[id];
+    if (f.ready > now || fertMarkers.has(id)) continue;
+    if (!f.notified) { f.notified = true; persist(); toast(`✨ ¡Ha brotado algo en ${f.nombre}!`, 4500); }
+    const sp = fertSpawn(id);
+    const m = L.marker([sp.lat, sp.lng], { zIndexOffset: 800, icon: L.divIcon({ className: '', iconSize: [64, 64], iconAnchor: [32, 60],
+      html: `<div class="spawn fert r-${sp.creature.rarity}"><img src="${esc(sp.creature.url)}" alt="" draggable="false"></div>` }) }).addTo(map);
+    m.on('click', () => tryEncounter(fertSpawn(id)));
+    fertMarkers.set(id, m);
+  }
+}
+
+let fertUI = null, fertKey = '';
+function fertState(s) {
+  const f = save.fert[s.id];
+  if (!f) return fertUI && fertUI.id === s.id ? 'choose' : 'none';
+  return f.ready > Date.now() ? 'growing' : 'ready';
+}
+function renderFertBox(s, inRange) {
+  const box = $('#fertBox'), st = fertState(s), f = save.fert[s.id], unit = fertUnit();
+  box.closest('.stop-card').classList.toggle('compact', st === 'choose');
+  const key = [s.id, st, fertUI && fertUI.hours, inRange, save.coins, save.dev].join('|');
+  if (key !== fertKey) {
+    fertKey = key;
+    if (st === 'none') box.innerHTML = '<button class="btn secondary fert-open">🌱 Abonar esta parada</button>';
+    else if (st === 'choose') {
+      const h = fertUI.hours, cost = fertCost(h);
+      const label = !inRange ? 'Acércate para abonarla'
+        : save.coins < cost ? `Te faltan ${cost - save.coins} todocoins` : `Abonar ${h} ${unit} · ${cost} todocoins`;
+      box.innerHTML = `<div class="fert-title">¿Cuánto tiempo la abonas?</div>
+        <div class="seg">${FERT_HOURS.map(x => `<button class="seg-b ${x === h ? 'on' : ''}" data-h="${x}">${x} ${unit}<small><i class="coin"></i> ${fertCost(x)}</small></button>`).join('')}</div>
+        <div class="fert-odds">Brotará una criatura <b>rara o mejor</b>. Con ${h} ${unit}:<br>
+          Épica o mejor <b>${pct(fertOdds(h, 'epico'))}</b> · Legendaria o mejor <b>${pct(fertOdds(h, 'legendario'))}</b><br>
+          Astral o mejor <b>${pct(fertOdds(h, 'astral'))}</b> · Secreta <b>${pct(fertOdds(h, 'secreto'))}</b></div>
+        <button class="btn fert-go" ${inRange && save.coins >= cost ? '' : 'disabled'}>${label}</button>
+        <button class="link fert-cancel">Cancelar</button>`;
+    } else if (st === 'growing') {
+      box.innerHTML = `<div class="fert-title">🌱 Abonada ${f.hours} ${unit} · algo está creciendo…</div>
+        <div class="bar"><i id="fertBar"></i></div><div class="muted" id="fertLeft"></div>`;
+    } else {
+      const c = fertSpawn(s.id).creature;
+      box.innerHTML = `<div class="fert-title">✨ ¡Ha brotado una criatura <span class="tag r-${c.rarity}">${RAR[c.rarity].label}</span>!</div>
+        <button class="btn fert-catch" ${inRange ? '' : 'disabled'}>${inRange ? '¡A capturarla!' : 'Acércate para capturarla'}</button>`;
+    }
+  }
+  if (st === 'growing') {
+    const left = f.ready - Date.now();
+    $('#fertBar').style.width = (100 * (1 - left / (f.ready - f.start))).toFixed(1) + '%';
+    $('#fertLeft').textContent = `Lista en ${fmtDur(left)}`;
+  }
+}
+$('#fertBox').onclick = e => {
+  const s = openStopData, b = e.target.closest('button');
+  if (!s || !b || b.disabled) return;
+  if (b.classList.contains('fert-open')) fertUI = { id: s.id, hours: 12 };
+  else if (b.dataset.h) fertUI.hours = +b.dataset.h;
+  else if (b.classList.contains('fert-cancel')) fertUI = null;
+  else if (b.classList.contains('fert-go')) return fertilize(s, fertUI.hours);
+  else if (b.classList.contains('fert-catch')) { const sp = fertSpawn(s.id); closeStop(); tryEncounter(sp); return; }
+  updateStopPanel();
+};
 $('#stopBtn').onclick = collectStop;
 $('#stopDisc').onclick = collectStop;
 $('#stopClose').onclick = closeStop;
@@ -340,6 +502,11 @@ function refreshSpawns() {
 }
 
 function removeSpawn(s) {
+  if (s.fert) { // criatura brotada: se termina el abono de esa parada
+    delete save.fert[s.stopId]; persist();
+    const m = fertMarkers.get(s.stopId); if (m) { map.removeLayer(m); fertMarkers.delete(s.stopId); }
+    refreshStops(); return;
+  }
   save.gone[s.id] = Date.now(); persist();
   const m = markers.get(s.id); if (m) { map.removeLayer(m); markers.delete(s.id); }
 }
@@ -392,8 +559,9 @@ function openCatch(spawn) {
   cs = { spawn, cr: c, phase: 'aim', t0: performance.now(), throws: 0, last: 0, ringS: 1 };
   cImg.src = c.url; cImg.className = '';
   target.className = `r-${c.rarity}`; ring.style.opacity = '';
-  $('#catchName').innerHTML = `${esc(c.name)} <span class="tag r-${c.rarity}">${RAR[c.rarity].label}</span>`;
-  catchEl.hidden = false; cMsg.classList.remove('show');
+  $('#catchName').innerHTML = `${esc(c.name)} <span class="tag r-${c.rarity}">${RAR[c.rarity].label}</span>
+    <small>${esc(c.category || 'Otros')}</small>`;
+  catchEl.hidden = false; cMsg.classList.remove("show"); document.body.classList.add("catching");
   const hint = $('#catchHint');
   hint.hidden = false; hint.innerHTML = 'Desliza el orbe hacia arriba para lanzarlo.<br>¡Acierta cuando el anillo sea pequeño!';
   layout(); resetOrb();
@@ -405,7 +573,7 @@ function closeCatch() {
   if (!cs) return;
   cancelAnimationFrame(cs.raf);
   cs = null; drag = null;
-  stopCam(); catchEl.hidden = true;
+  stopCam(); catchEl.hidden = true; document.body.classList.remove("catching");
   refreshSpawns();
 }
 
@@ -513,7 +681,7 @@ async function breakOut(token) {
   flash('¡Se ha escapado del orbe!');
   cs.throws++;
   await sleep(900); if (cs !== token) return;
-  if (Math.random() < RAR[cs.cr.rarity].flee + cs.throws * 0.02) {
+  if (!cs.spawn.fert && Math.random() < RAR[cs.cr.rarity].flee + cs.throws * 0.02) { // las brotadas no huyen
     cs.phase = 'done'; cImg.className = 'flee'; orb.style.opacity = '0'; ring.style.opacity = '0';
     flash(`¡${cs.cr.name} ha huido!`, 1600);
     removeSpawn(cs.spawn);
@@ -595,20 +763,42 @@ function updateHud() {
   $('#xpbar').style.width = ((save.xp - a) / (b - a) * 100).toFixed(1) + '%';
   $('#xptext').textContent = `${save.xp - a} / ${b - a} XP`;
   $('#orbCount').textContent = save.orbs;
+  $('#coinCount').textContent = save.coins;
 }
 
 // ---------------------------------------------------------------- Álbum / modal
+function albumCell(c) {
+  const n = save.caught[c.id] || 0;
+  // Las secretas ni siquiera muestran la silueta hasta capturarlas
+  const pic = !n && c.rarity === 'secreto'
+    ? '<div class="mystery">?</div>'
+    : `<img src="${esc(c.url)}" loading="lazy" alt="" draggable="false">`;
+  return `<button class="cell r-${c.rarity} ${n ? '' : 'unknown'}" data-id="${esc(c.id)}" title="${n ? esc(RAR[c.rarity].label) : ''}">
+    ${pic}<span>${n ? esc(c.name) : '???'}</span>${n ? `<b>×${n}</b>` : ''}<i class="rdot"></i></button>`;
+}
 function renderAlbum() {
-  const sorted = [...creatures].sort((a, b) =>
-    RAR_ORDER.indexOf(a.rarity) - RAR_ORDER.indexOf(b.rarity) || a.name.localeCompare(b.name));
-  $('#albumCount').textContent = `${creatures.filter(c => save.caught[c.id]).length} / ${creatures.length}`;
-  $('#albumGrid').innerHTML = sorted.length ? sorted.map(c => {
-    const n = save.caught[c.id] || 0;
-    return `<button class="cell r-${c.rarity} ${n ? '' : 'unknown'}" data-id="${esc(c.id)}">
-      <img src="${esc(c.url)}" loading="lazy" alt="" draggable="false"><span>${n ? esc(c.name) : '???'}</span>${n ? `<b>×${n}</b>` : ''}</button>`;
-  }).join('') : '<div class="empty">No hay imágenes todavía.</div>';
+  const got = list => list.filter(c => save.caught[c.id]).length;
+  $('#albumCount').textContent = `${got(creatures)} / ${creatures.length}`;
+  if (!creatures.length) { $('#albumGrid').innerHTML = '<div class="empty">No hay imágenes todavía.</div>'; return; }
+  const groups = new Map();
+  for (const c of creatures) {
+    if (!groups.has(c.category)) groups.set(c.category, []);
+    groups.get(c.category).push(c);
+  }
+  const cats = [...groups.keys()].sort((a, b) => (a === 'Otros') - (b === 'Otros') || a.localeCompare(b, 'es'));
+  const chips = cats.length > 1
+    ? `<nav class="chips">${cats.map((cat, i) => `<button class="chip" data-sec="sec${i}">${esc(cat)}</button>`).join('')}</nav>` : '';
+  $('#albumGrid').innerHTML = chips + cats.map((cat, i) => {
+    const list = groups.get(cat).sort((a, b) =>
+      RAR_ORDER.indexOf(a.rarity) - RAR_ORDER.indexOf(b.rarity) || a.name.localeCompare(b.name, 'es'));
+    return `<section class="album-sec" id="sec${i}">
+      <h3 class="album-h"><span>${esc(cat)}</span><span class="tag">${got(list)} / ${list.length}</span></h3>
+      <div class="album-grid">${list.map(albumCell).join('')}</div></section>`;
+  }).join('');
 }
 $('#albumGrid').onclick = e => {
+  const chip = e.target.closest('.chip');
+  if (chip) { document.getElementById(chip.dataset.sec)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
   const cell = e.target.closest('.cell'); if (!cell) return;
   const c = creatures.find(x => x.id === cell.dataset.id);
   if (!c) return;
@@ -622,7 +812,7 @@ function showCard(c, { isNew, gained, levelUp }) {
   card.className = `card r-${c.rarity}`;
   card.innerHTML = `${isNew ? '<div class="new">¡NUEVA CRIATURA!</div>' : ''}
     <img src="${esc(c.url)}" alt="">
-    <h3>${esc(c.name)}</h3><span class="tag">${RAR[c.rarity].label}</span>
+    <h3>${esc(c.name)}</h3><span class="tag">${RAR[c.rarity].label}</span> <span class="tag cat">${esc(c.category || 'Otros')}</span>
     <div class="stats">${gained ? `+${gained} XP<br>` : ''}${levelUp ? `<b>¡Subes a nivel ${levelOf(save.xp)}!</b><br>` : ''}
     Capturada ${n} ${n === 1 ? 'vez' : 'veces'}${first ? `<br>Primera vez: ${new Date(first).toLocaleDateString('es-ES')}` : ''}</div>
     <button class="btn">Vale</button>`;
@@ -653,7 +843,7 @@ $('#btnReload').onclick = async () => {
 $('#btnReset').onclick = () => {
   if (!confirm('¿Seguro? Se borrarán tus capturas y tu experiencia.')) return;
   save.caught = {}; save.first = {}; save.xp = 0; save.gone = {};
-  save.orbs = CFG.orbsStart; save.stops = {}; save.visited = {}; persist();
+  save.orbs = CFG.orbsStart; save.stops = {}; save.visited = {}; save.coins = CFG.coinsStart; save.fert = {}; persist();
   updateHud(); refreshSpawns(); refreshStops(); toast('Progreso borrado');
 };
 
@@ -670,11 +860,12 @@ updateHud();
 setStatus('Cargando imágenes…');
 Promise.all([initCreatures(false), loadParadas()]).then(() => {
   startGeo();
-  setInterval(() => { refreshSpawns(); refreshStops(); }, 20000); // apariciones y paradas se renuevan
+  setInterval(refreshSpawns, 20000); // las apariciones se renuevan
+  setInterval(refreshStops, 5000);   // recargas de paradas y criaturas brotadas
 });
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost'))
   navigator.serviceWorker.register('sw.js').catch(() => {});
 
 // Para pruebas desde la consola
-window.fotocaza = { save, get creatures() { return creatures; }, openCatch, throwOrb: (vx, vy) => cs && throwOrb(vx, vy), get state() { return cs; } };
+window.fotocaza = { save, parse: parseCreature, get creatures() { return creatures; }, openCatch, throwOrb: (vx, vy) => cs && throwOrb(vx, vy), get state() { return cs; } };
 })();
