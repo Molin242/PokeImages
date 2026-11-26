@@ -58,6 +58,46 @@ Los PNG con fondo transparente quedan mucho mejor. Las imágenes nuevas tardan h
 
 Mientras la carpeta esté vacía, la app usa unas criaturas de demostración.
 
+## Cómo capturar
+
+- **Lanza** deslizando el orbe hacia arriba. La dirección del dedo es hacia dónde va; la fuerza, a qué altura llega:
+  floja → se queda corta y bota en el suelo; demasiado fuerte → pasa por encima y cae detrás de la criatura.
+- La escena tiene **profundidad real**: el orbe vuela en 3D, se hace pequeño al alejarse y proyecta su sombra en el suelo.
+  Las criaturas más raras además se acercan y se alejan, así que su tamaño (y el punto al que apuntar) cambia.
+- **Anillo de color:** se encoge una y otra vez. Si aciertas cuando es pequeño: *¡Bien!* (×1), *¡Genial!* (×1,4) o *¡Excelente!* (×1,8).
+  Su color dice lo difícil que es la criatura: verde, amarillo, naranja o rojo.
+- **Curva:** gira el orbe en círculos (más de una vuelta) antes de lanzarlo. Brillará en dorado, saldrá con efecto
+  y vuelve a donde apuntaste. Da un ×1,35 extra que se suma al del anillo.
+- **Saltos:** las criaturas a partir de raras saltan de vez en cuando (primero se agachan: ¡es el aviso!). Si el orbe llega
+  mientras están en el aire, fallas.
+- Si se escapa del orbe puede huir (las más raras huyen más). Las criaturas brotadas de un abono nunca huyen.
+- Sonido y vibración se pueden quitar en **Ajustes**.
+
+## Fusión y huevos
+
+Cuando tengas **5 copias de la misma criatura** (en el álbum salen con un 🥚 y borde dorado), ábrela y pulsa
+**Fusionar 5 en un huevo**. Las 5 copias se convierten en un huevo de **su misma rareza y familia** (su categoría/carpeta).
+
+Los huevos se abren **andando** con la app abierta (botón 🥚 de la barra inferior). Cuanto más raro, más hay que andar:
+
+| Huevo | Distancia |
+|---|---|
+| Común | 1 km |
+| Raro | 2 km |
+| Superraro | 3 km |
+| Épico | 5 km |
+| Legendario | 7 km |
+| Mítico | 10 km |
+| Astral | 12 km |
+| Secreto | 15 km |
+
+- Hay **3 incubadoras**: los huevos que no caben esperan su turno y entran solos cuando se libera una.
+- Al eclosionar sale una criatura **de la misma familia**: 55 % de la misma rareza, 25 % una más, 5 % dos más
+  y 15 % una menos (si la familia no tiene esa rareza, la más cercana). El panel enseña los porcentajes de cada huevo.
+- La distancia se mide con el GPS: no cuentan los saltos de señal ni ir en coche o bus (más de 25 km/h).
+  Solo cuenta mientras la app está abierta (una web no puede usar el GPS cerrada).
+- En **Modo prueba**, moverte tocando el mapa también cuenta como andar.
+
 ## Orbes y paradas
 
 Cada lanzamiento gasta un **orbe** (empiezas con 30). Para conseguir más, ve a una **parada** del mapa

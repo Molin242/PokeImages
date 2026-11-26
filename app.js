@@ -49,7 +49,7 @@ const SAVE_KEY = 'fotocaza_v1';
 let save;
 try { save = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}'); } catch { save = {}; }
 save = Object.assign({ caught: {}, first: {}, xp: 0, gone: {}, dev: false, cam: false,
-  orbs: CFG.orbsStart, stops: {}, visited: {}, coins: CFG.coinsStart, fert: {} }, save);
+  orbs: CFG.orbsStart, stops: {}, visited: {}, coins: CFG.coinsStart, fert: {}, sound: true, eggs: [], walked: 0 }, save);
 for (const k in save.gone) if (Date.now() - save.gone[k] > 864e5) delete save.gone[k];
 const persist = () => localStorage.setItem(SAVE_KEY, JSON.stringify(save));
 
@@ -517,6 +517,7 @@ map.on('dragstart', () => { follow = false; });
 map.on('click', e => {
   if (!save.dev) return;
   manualPos = true; follow = false;
+  if (player) addWalk(distM(player, e.latlng)); // en modo prueba, moverse tocando el mapa cuenta como andar
   setPlayer(e.latlng.lat, e.latlng.lng);
 });
 $('#btnCenter').onclick = () => {
@@ -533,7 +534,10 @@ function startGeo() {
   setTimeout(() => { if (!gotGPS) fallback(); }, 9000);
   navigator.geolocation.watchPosition(p => {
     gotGPS = true;
-    if (!manualPos) setPlayer(p.coords.latitude, p.coords.longitude);
+    if (!manualPos) {
+      trackWalk(p.coords.latitude, p.coords.longitude, p.coords.accuracy, p.timestamp || Date.now());
+      setPlayer(p.coords.latitude, p.coords.longitude);
+    }
   }, err => { console.warn(err); if (!gotGPS && err.code === 1) fallback(); },
   { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
 }
@@ -549,22 +553,95 @@ function tryEncounter(s) {
 }
 
 // ---------------------------------------------------------------- Pantalla de captura
-const catchEl = $('#catch'), target = $('#target'), cImg = $('#creatureImg'), ring = $('#ring');
-const orb = $('#orb'), orbIn = orb.firstElementChild, cMsg = $('#catchMsg'), cam = $('#cam'), btnRun = $('#btnRun');
+const catchEl = $('#catch'), target = $('#target'), cImg = $('#creatureImg'), ring = $('#ring'), ringMax = $('#ringMax');
+const orb = $('#orb'), orbIn = orb.firstElementChild, cMsg = $('#catchMsg'), cam = $('#cam'), btnRun = $('#btnRun'), fx = $('#fx');
+const cShadow = $('#cShadow'), oShadow = $('#oShadow'), arena = $('#arena');
 const FR = 38; // fotogramas hasta que el orbe llega a la criatura
+// Probabilidad de que la criatura salte en cada intervalo (~2,2 s): las más raras saltan más
+const JUMP = { comun: 0, raro: 0.06, superraro: 0.12, epico: 0.18, legendario: 0.24, mitico: 0.3, astral: 0.36, secreto: 0.42 };
+const CURVE_BONUS = 1.35;
 let cs = null, drag = null, camStream = null;
 
+// Sonido (sintetizado, sin archivos) y vibración
+const sfx = (() => {
+  let ac = null;
+  const ctx = () => {
+    if (!save.sound) return null;
+    try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); }
+    catch { return null; }
+    return ac;
+  };
+  function tone(freq, dur, { type = 'sine', vol = 0.15, slide = 0, delay = 0 } = {}) {
+    const a = ctx(); if (!a) return;
+    const t = a.currentTime + delay, o = a.createOscillator(), g = a.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq * slide), t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(a.destination); o.start(t); o.stop(t + dur + 0.03);
+  }
+  function noise(dur, { vol = 0.15, from = 2000, to = 400, delay = 0 } = {}) {
+    const a = ctx(); if (!a) return;
+    const t = a.currentTime + delay, n = Math.floor(a.sampleRate * dur), buf = a.createBuffer(1, n, a.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+    const src = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+    src.buffer = buf; f.type = 'bandpass'; f.Q.value = 1.2;
+    f.frequency.setValueAtTime(from, t); f.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f).connect(g).connect(a.destination); src.start(t);
+  }
+  const vib = p => { if (save.sound && navigator.vibrate) try { navigator.vibrate(p); } catch {} };
+  return {
+    unlock: ctx,
+    throw: () => noise(0.35, { vol: 0.1, from: 900, to: 2600 }),
+    curve: () => { tone(880, 0.2, { type: 'triangle', vol: 0.07, slide: 1.6 }); vib(15); },
+    hit: () => { tone(220, 0.12, { type: 'square', vol: 0.08, slide: 0.5 }); noise(0.1, { vol: 0.18, from: 3000, to: 800 }); vib(30); },
+    absorb: () => tone(300, 0.35, { vol: 0.12, slide: 2.5 }),
+    shake: () => { tone(110, 0.12, { type: 'triangle', vol: 0.2 }); vib(25); },
+    breakOut: () => { noise(0.3, { vol: 0.22, from: 400, to: 3000 }); tone(500, 0.3, { type: 'sawtooth', vol: 0.05, slide: 0.4 }); vib([40, 40, 80]); },
+    flee: () => tone(600, 0.6, { vol: 0.1, slide: 0.3 }),
+    miss: () => tone(170, 0.18, { vol: 0.1, slide: 0.6 }),
+    success: () => { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.22, { type: 'triangle', vol: 0.12, delay: i * 0.11 })); vib([30, 60, 30, 60, 120]); }
+  };
+})();
+
+// Partículas y estela
+function burst(x, y, color, n = 12, star = false) {
+  for (let i = 0; i < n; i++) {
+    const p = document.createElement('i');
+    const a = Math.random() * Math.PI * 2, r = 40 + Math.random() * 80;
+    p.className = 'spark' + (star ? ' star' : '');
+    p.style.cssText = `left:${x}px;top:${y}px;--dx:${(Math.cos(a) * r).toFixed(0)}px;--dy:${(Math.sin(a) * r).toFixed(0)}px;--c:${color};animation-delay:${(Math.random() * 90).toFixed(0)}ms`;
+    if (star) p.textContent = '★';
+    fx.appendChild(p);
+    p.addEventListener('animationend', () => p.remove());
+  }
+}
+function trail(x, y, s, curve) {
+  const d = document.createElement('i');
+  d.className = 'trail' + (curve ? ' c' : '');
+  d.style.transform = `translate(${x}px,${y}px) scale(${s})`;
+  fx.appendChild(d);
+  d.addEventListener('animationend', () => d.remove());
+}
+function quake() { catchEl.classList.remove('quake'); void catchEl.offsetWidth; catchEl.classList.add('quake'); }
+
 function openCatch(spawn) {
-  const c = spawn.creature;
-  cs = { spawn, cr: c, phase: 'aim', t0: performance.now(), throws: 0, last: 0, ringS: 1 };
-  cImg.src = c.url; cImg.className = '';
-  target.className = `r-${c.rarity}`; ring.style.opacity = '';
+  const c = spawn.creature, now = performance.now();
+  cs = { spawn, cr: c, phase: 'aim', t0: now, throws: 0, last: 0, ringS: 1, jump: 0, nextJump: now + 1500 };
+  cImg.src = c.url; cImg.className = 'appear';
+  target.className = `r-${c.rarity}`; arena.className = `r-${c.rarity}`; ring.style.opacity = ''; ringMax.style.opacity = '';
+  // Color del anillo según lo difícil que es: verde, amarillo, naranja, rojo
+  const p = RAR[c.rarity].catch;
+  target.style.setProperty('--dc', p >= 0.6 ? '#34c759' : p >= 0.4 ? '#ffd60a' : p >= 0.2 ? '#ff9f0a' : '#ff3b30');
   $('#catchName').innerHTML = `${esc(c.name)} <span class="tag r-${c.rarity}">${RAR[c.rarity].label}</span>
-    <small>${esc(c.category || 'Otros')}</small>`;
-  catchEl.hidden = false; cMsg.classList.remove("show"); document.body.classList.add("catching");
+    <small>${esc(c.category || 'Otros')}${spawn.fert ? ' · 🌱 brotada' : ''}</small>`;
+  catchEl.hidden = false; cMsg.classList.remove('show'); document.body.classList.add('catching');
   const hint = $('#catchHint');
-  hint.hidden = false; hint.innerHTML = 'Desliza el orbe hacia arriba para lanzarlo.<br>¡Acierta cuando el anillo sea pequeño!';
-  layout(); resetOrb();
+  hint.hidden = false;
+  hint.innerHTML = 'Desliza el orbe hacia arriba. ¡Acierta cuando el anillo sea pequeño!<br>Gira el orbe en círculos antes de lanzarlo para hacer una <b>curva</b>.';
+  fx.innerHTML = '';
+  layout(); resetOrb(true);
   if (save.cam) startCam();
   cs.raf = requestAnimationFrame(loop);
 }
@@ -573,30 +650,92 @@ function closeCatch() {
   if (!cs) return;
   cancelAnimationFrame(cs.raf);
   cs = null; drag = null;
-  stopCam(); catchEl.hidden = true; document.body.classList.remove("catching");
+  fx.innerHTML = '';
+  stopCam(); catchEl.hidden = true; document.body.classList.remove('catching');
   refreshSpawns();
 }
+
+// Cámara virtual: proyecta el mundo 3D (metros) a la pantalla.
+// X = izquierda/derecha, Y = altura sobre el suelo, Z = distancia a la cámara.
+const proj = (X, Y, Z) => {
+  const c = cs.cam;
+  return { x: cs.W / 2 + c.f * X / Z, y: c.hy + c.f * (c.h - Y) / Z };
+};
+// Cuánto se acercan/alejan las criaturas (metros): las más raras se mueven más en profundidad
+const DEPTH = { comun: 0, raro: 0.4, superraro: 0.6, epico: 0.9, legendario: 1.1, mitico: 1.3, astral: 1.5, secreto: 1.8 };
 
 function layout() {
   if (!cs) return;
   cs.W = catchEl.clientWidth; cs.H = catchEl.clientHeight;
-  cs.size = Math.min(cs.W * 0.55, cs.H * 0.32, 280);
+  cs.size = Math.min(cs.W * 0.55, cs.H * 0.32, 280);           // tamaño en pantalla a la distancia normal
   target.style.width = target.style.height = cs.size + 'px';
+  const cam = cs.cam = { h: 1.6, hy: cs.H * 0.30, z0: 3, zc: 7 }; // altura de los ojos, horizonte, orbe en mano, criatura
+  cam.f = (cs.H * 0.62 - cam.hy) * cam.zc / cam.h;               // los pies de la criatura quedan al 62 % de la pantalla
+  cs.hC = cs.size * cam.zc / cam.f;                              // altura de la criatura en metros
   cs.rest = { x: cs.W / 2, y: cs.H - 110 };
+  cShadow.style.width = (cs.size * 0.72).toFixed(0) + 'px'; cShadow.style.height = (cs.size * 0.13).toFixed(0) + 'px';
+  drawGround();
   if (cs.phase === 'aim' && !drag) setOrb(cs.rest.x, cs.rest.y);
 }
 addEventListener('resize', layout);
+
+// Suelo con perspectiva: franjas de césped que se estrechan hacia el horizonte, colinas y bruma
+function drawGround() {
+  const cv = $('#ground'), cam = cs.cam, W = cs.W, H = cs.H, hy = cam.hy;
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+  const yAt = z => hy + cam.f * cam.h / z;
+  // colinas lejanas (más claras = más lejos)
+  [[0.10, '#a9cfe0', 0.013, 0], [0.06, '#9cc99a', 0.021, 2]].forEach(([amp, col, fr, ph]) => {
+    g.beginPath(); g.moveTo(0, hy);
+    for (let x = 0; x <= W; x += 8) g.lineTo(x, hy - (Math.sin(x * fr + ph) * 0.5 + 0.5) * H * amp - 4);
+    g.lineTo(W, hy); g.closePath(); g.fillStyle = col; g.fill();
+  });
+  // césped
+  const grd = g.createLinearGradient(0, hy, 0, H);
+  grd.addColorStop(0, '#b4d99c'); grd.addColorStop(0.18, '#93cc76'); grd.addColorStop(1, '#4c9a3d');
+  g.fillStyle = grd; g.fillRect(0, hy, W, H - hy);
+  // franjas (cortadas en profundidad): cada una más estrecha cuanto más lejos
+  let z = 1.6, i = 0;
+  while (z < 120) {
+    const z2 = z * 1.22, y1 = yAt(z), y2 = yAt(z2);
+    if (i % 2) { g.fillStyle = 'rgba(255,255,255,.07)'; g.fillRect(0, y2, W, y1 - y2); }
+    z = z2; i++;
+  }
+  // líneas que van hacia el punto de fuga
+  g.strokeStyle = 'rgba(255,255,255,.10)'; g.lineWidth = 1;
+  for (let X = -25; X <= 25; X += 2) { // impares: ninguna justo en el centro
+    const a = proj(X, 0, 1.2), b = proj(X, 0, 120);
+    g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+  }
+  // bruma en el horizonte (perspectiva atmosférica)
+  const fog = g.createLinearGradient(0, hy - H * 0.06, 0, hy + H * 0.14);
+  fog.addColorStop(0, 'rgba(226,242,255,0)'); fog.addColorStop(0.35, 'rgba(226,242,255,.9)'); fog.addColorStop(1, 'rgba(226,242,255,0)');
+  g.fillStyle = fog; g.fillRect(0, hy - H * 0.06, W, H * 0.2);
+  // un poco más oscuro cerca de la cámara
+  const vig = g.createLinearGradient(0, H * 0.75, 0, H);
+  vig.addColorStop(0, 'rgba(0,40,0,0)'); vig.addColorStop(1, 'rgba(0,40,0,.25)');
+  g.fillStyle = vig; g.fillRect(0, H * 0.75, W, H * 0.25);
+}
 
 function setOrb(x, y, s = 1, rot = 0) {
   cs.ox = x; cs.oy = y;
   orb.style.transform = `translate(${x}px,${y}px) scale(${s}) rotate(${rot}deg)`;
 }
-function resetOrb() {
+function resetOrb(animated) {
   if (!cs) return;
   cs.phase = 'aim'; cs.fl = null;
-  orb.style.transition = ''; orb.style.opacity = save.orbs > 0 ? '' : '0.25';
+  oShadow.style.opacity = '0'; orb.style.zIndex = '';
+  orb.style.opacity = save.orbs > 0 ? '' : '0.25';
   orbIn.className = 'orb-inner';
   btnRun.disabled = false;
+  if (animated && save.orbs > 0) { // el orbe nuevo sube desde abajo
+    orb.style.transition = 'none'; setOrb(cs.rest.x, cs.H + 90); void orb.offsetWidth;
+    orb.style.transition = 'transform .45s cubic-bezier(.2,1.4,.4,1)';
+  } else orb.style.transition = '';
   setOrb(cs.rest.x, cs.rest.y);
   $('#orbLeft').textContent = `◉ ×${save.orbs}`;
   if (save.orbs <= 0) {
@@ -614,10 +753,39 @@ function loop(now) {
   const dt = Math.min(50, cs.last ? now - cs.last : 16.67), k = dt / 16.67;
   cs.last = now;
   if (cs.phase === 'aim' || cs.phase === 'flying') {
-    const [amp, spd] = MOVE[cs.cr.rarity], t = (now - cs.t0) / 1000;
-    cs.cx = cs.W / 2 + (Math.sin(t * spd) + 0.3 * Math.sin(t * spd * 2.3)) * amp * cs.W;
-    cs.cy = cs.H * 0.42 + Math.sin(t * 2.1) * 8;
-    target.style.transform = `translate(${cs.cx - cs.size / 2}px,${cs.cy - cs.size / 2}px)`;
+    const cam = cs.cam, r = cs.cr.rarity, [amp, spd] = MOVE[r], t = (now - cs.t0) / 1000;
+    // Posición en el mundo
+    const zc = cam.zc + Math.sin(t * 0.55 + 1.3) * DEPTH[r];
+    const X = (Math.sin(t * spd) + 0.3 * Math.sin(t * spd * 2.3)) * amp * cs.W * cam.zc / cam.f;
+    // Saltos: se agacha (aviso), salta y aterriza
+    let jY = 0, sx = 1, sy = 1;
+    if (!cs.jump && now >= cs.nextJump) {
+      cs.nextJump = now + 2200;
+      if (Math.random() < JUMP[r]) cs.jump = now;
+    }
+    if (cs.jump) {
+      const p = (now - cs.jump) / 1000;
+      if (p >= 1) cs.jump = 0;
+      else if (p < 0.3) { const q = Math.sin(p / 0.3 * Math.PI / 2); sy = 1 - 0.2 * q; sx = 1 + 0.14 * q; }
+      else if (p < 0.85) { jY = Math.sin((p - 0.3) / 0.55 * Math.PI) * cs.hC * 0.6; sy = 1.07; sx = 0.95; }
+      else { const q = Math.sin((p - 0.85) / 0.15 * Math.PI); sy = 1 - 0.1 * q; sx = 1 + 0.08 * q; }
+    }
+    const bob = (Math.sin(t * 2.1) * 0.5 + 0.5) * cs.hC * 0.03;
+    // Proyección a pantalla
+    const feet = proj(X, jY + bob, zc), ground = proj(X, 0, zc);
+    const sNow = cam.zc / zc;                       // escala por distancia
+    cs.zc = zc; cs.X = X; cs.sNow = sNow; cs.sizeNow = cs.size * sNow;
+    cs.cx = feet.x; cs.cy = feet.y - cs.sizeNow / 2; cs.feetY = feet.y; cs.groundY = ground.y;
+    cs.cyBase = proj(X, cs.hC / 2, zc).y;           // centro sin saltar (para apuntar)
+    target.style.transform = `translate(${feet.x - cs.size / 2}px,${feet.y - cs.size}px) scale(${sNow * sx},${sNow * sy})`;
+    // Sombra en el suelo (más pequeña y suave cuanto más alto salta) y plataforma
+    const lift = clamp(1 - jY / (cs.hC * 0.8), 0.35, 1);
+    cShadow.style.transform = `translate(${ground.x}px,${ground.y}px) scale(${sNow * lift})`;
+    cShadow.style.opacity = (0.55 * lift).toFixed(2);
+    const R = cs.hC * 0.62, yN = proj(X, 0, zc - R).y, yF = proj(X, 0, zc + R).y;
+    arena.style.transform = `translate(${ground.x}px,${(yN + yF) / 2}px)`;
+    arena.style.width = (2 * cam.f * R / zc).toFixed(1) + 'px';
+    arena.style.height = (yN - yF).toFixed(1) + 'px';
     const P = 2200, ph = ((now - cs.t0) % P) / P;
     cs.ringS = 1 - 0.72 * ph;
     ring.style.transform = `scale(${cs.ringS})`;
@@ -626,75 +794,122 @@ function loop(now) {
   if (cs) cs.raf = requestAnimationFrame(loop);
 }
 
-function throwOrb(vxms, vyms) {
+function throwOrb(vxms, vyms, curve = 0) {
   // vxms / vyms: velocidad del dedo en px/ms. Dirección = hacia dónde va. Fuerza = si llega o se pasa.
-  const x0 = cs.ox, y0 = cs.oy, g = cs.H * 0.0009;
-  const dy = cs.cy - y0;                                  // negativo (hacia arriba)
-  const vyNeed = (dy - 0.5 * g * FR * FR) / FR;           // velocidad exacta para llegar
-  const power = clamp(-vyms / 2, 0.45, 1.8);              // ~2 px/ms = lanzamiento perfecto
-  const vy = vyNeed * (0.7 + 0.3 * power);
-  const vx = clamp((vxms / -vyms) * (-dy) / FR, -30, 30);
-  cs.fl = { x: x0, y: y0, vx, vy, g, f: 0, rot: 0, checked: false };
+  const cam = cs.cam;
+  const X0 = (cs.ox - cs.W / 2) * cam.z0 / cam.f;          // del dedo (pantalla) al mundo
+  const Y0 = cam.h - (cs.oy - cam.hy) * cam.z0 / cam.f;
+  const zT = cs.zc, T = FR;                                  // llega a la profundidad de la criatura en T fotogramas
+  const g = 0.0028 * cs.hC / 1.6;
+  const vyNeed = (cs.hC / 2 - Y0 + 0.5 * g * T * T) / T;     // altura exacta para llegar al centro
+  // ~2 px/ms = lanzamiento perfecto; si es flojo se queda corto, si es muy fuerte pasa por encima
+  const power = clamp(-vyms / 2, 0.3, 1.9);
+  const vy = vyNeed * (0.35 + 0.65 * power);
+  const aimSx = cs.ox + (vxms / -vyms) * (cs.oy - cs.cyBase); // hacia dónde apunta el dedo, a la altura de la criatura
+  const Xt = clamp((aimSx - cs.W / 2) * zT / cam.f, -12, 12);
+  cs.fl = { X: X0, Y: Y0, Z: cam.z0, vx: (Xt - X0) / T, vy, vz: (zT - cam.z0) / T, g, f: 0, rot: 0,
+    checked: false, curve, trail: 0, bounces: 0 };
   cs.phase = 'flying';
   save.orbs = Math.max(0, save.orbs - 1); persist(); updateHud();
   $('#orbLeft').textContent = `◉ ×${save.orbs}`;
   $('#catchHint').hidden = true;
+  sfx.throw();
 }
 
 function stepFlight(k) {
-  const f = cs.fl;
-  f.x += f.vx * k; f.y += f.vy * k; f.vy += f.g * k; f.f += k; f.rot += (12 + f.vx) * k;
-  setOrb(f.x, f.y, 1 - 0.5 * Math.min(1, f.f / FR), f.rot);
-  if (!f.checked && f.f >= FR) {
-    f.checked = true;
-    if (Math.hypot(f.x - cs.cx, f.y - cs.cy) < cs.size * 0.45) { cs.phase = 'capture'; onHit(); return; }
+  const f = cs.fl, cam = cs.cam;
+  f.X += f.vx * k; f.Y += f.vy * k; f.vy -= f.g * k; f.Z += f.vz * k; f.f += k;
+  f.rot += (f.curve ? 34 * f.curve : 12 + f.vx * 60) * k;
+  // Rebote si toca el suelo
+  if (f.Y < 0.1) {
+    f.Y = 0.1; f.vy = Math.abs(f.vy) * 0.45; f.vz *= 0.55; f.vx *= 0.55; f.bounces++;
+    if (f.bounces === 1) sfx.miss();
   }
-  const out = f.y > cs.H + 80 || f.y < -120 || f.x < -80 || f.x > cs.W + 80;
-  if ((f.checked && f.f > FR + 30) || out) { cs.throws++; flash('¡Fallaste!'); resetOrb(); }
+  // La curva se abre hacia un lado y vuelve al punto apuntado justo al llegar
+  const p = Math.min(1, f.f / FR);
+  const xo = f.curve ? f.curve * 0.16 * cs.W * cam.zc / cam.f * Math.sin(Math.PI * p) : 0;
+  const P = proj(f.X + xo, f.Y, f.Z), sc = cam.z0 / f.Z;
+  setOrb(P.x, P.y, sc, f.rot);
+  orb.style.zIndex = f.Z > cs.zc + 0.15 ? '0' : '';         // si se pasa, queda detrás de la criatura
+  // Sombra del orbe en el suelo
+  const S = proj(f.X + xo, 0, f.Z);
+  oShadow.style.transform = `translate(${S.x}px,${S.y}px) scale(${sc})`;
+  oShadow.style.opacity = clamp(0.55 - f.Y * 0.18, 0.08, 0.55).toFixed(2);
+  if ((f.trail += k) >= 1.5) { f.trail = 0; trail(P.x, P.y, sc, f.curve); }
+  if (!f.checked && f.Z >= cs.zc) {
+    f.checked = true;
+    const d = Math.hypot(P.x - cs.cx, P.y - cs.cy);
+    // si ya ha botado en el suelo no cuenta
+    if (!f.bounces && d < cs.sizeNow * 0.45) { cs.phase = 'capture'; onHit(); return; }
+    f.near = !f.bounces && d < cs.sizeNow * 0.8;
+    f.short = f.bounces > 0;            // botó antes de llegar
+    f.over = !f.bounces && P.y < cs.cy; // pasó por encima
+  }
+  const out = P.y < -120 || P.x < -100 || P.x > cs.W + 100 || f.Z > cs.zc + 9;
+  if (f.f > FR + 55 || f.bounces > 2 || out) {
+    cs.throws++; if (!f.bounces) sfx.miss();
+    flash(f.near ? '¡Casi!' : (f.short || !f.checked) ? '¡Te has quedado corto!' : f.over ? '¡Demasiado fuerte!' : '¡Fallaste!');
+    resetOrb(true);
+  }
 }
 
 async function onHit() {
-  const token = cs, q = cs.ringS;
+  const token = cs, q = cs.ringS, curve = cs.fl.curve;
   let bonus = 1, label = '¡Bien!';
   if (q < 0.45) { bonus = 1.8; label = '¡Excelente!'; } else if (q < 0.7) { bonus = 1.4; label = '¡Genial!'; }
+  if (curve) { bonus *= CURVE_BONUS; label += ' + ¡Curva!'; }
   btnRun.disabled = true;
-  flash(label);
-  ring.style.opacity = '0'; cImg.className = 'absorb';
-  setOrb(cs.cx, cs.cy, 0.5);
+  flash(label, 1400); sfx.hit();
+  burst(cs.ox, cs.oy, '#ffffff', 14);
+  cImg.className = 'hit';
+  await sleep(140); if (cs !== token) return;
+  ring.style.opacity = '0'; ringMax.style.opacity = '0'; cImg.className = 'absorb'; sfx.absorb();
+  orbIn.className = 'orb-inner'; // quitar el giro de la curva para que se vea el temblor
+  target.style.transform = `translate(${cs.cx - cs.size / 2}px,${cs.feetY - cs.size}px) scale(${cs.sNow})`;
+  cShadow.style.opacity = '0'; oShadow.style.opacity = '0'; orb.style.zIndex = '';
+  const oSc = Math.max(0.42, cs.cam.z0 / cs.zc);
+  setOrb(cs.cx, cs.cy, oSc);
   await sleep(450); if (cs !== token) return;
-  orb.style.transition = 'transform .4s cubic-bezier(.5,0,.75,1.5)';
-  setOrb(cs.cx, cs.cy + cs.size * 0.38, 0.5);
-  await sleep(500); if (cs !== token) return;
+  // cae al suelo (a la altura normal, aunque estuviera saltando)
+  orb.style.transition = 'transform .45s cubic-bezier(.5,0,.75,1.5)';
+  setOrb(cs.cx, cs.groundY - 37 * oSc, oSc);
+  await sleep(550); if (cs !== token) return;
   orb.style.transition = '';
-  const p = Math.min(0.97, RAR[cs.cr.rarity].catch * bonus), perShake = Math.pow(p, 1 / 3);
+  const pc = Math.min(0.97, RAR[cs.cr.rarity].catch * bonus), perShake = Math.pow(pc, 1 / 3);
   for (let i = 0; i < 3; i++) {
     orbIn.classList.remove('shake'); void orbIn.offsetWidth; orbIn.classList.add('shake');
+    sfx.shake();
     await sleep(1000); if (cs !== token) return;
     if (Math.random() > perShake) return breakOut(token);
+    burst(cs.ox, cs.oy - 30, '#ffe066', 3, true);
   }
   success(token);
 }
 
 async function breakOut(token) {
   orbIn.className = 'orb-inner burst';
-  cImg.className = ''; ring.style.opacity = '';
+  cImg.className = 'pop'; ring.style.opacity = ''; ringMax.style.opacity = ''; cShadow.style.opacity = '';
   flash('¡Se ha escapado del orbe!');
+  sfx.breakOut(); quake();
+  burst(cs.ox, cs.oy, getComputedStyle(target).getPropertyValue('--rc') || '#fff', 18);
   cs.throws++;
   await sleep(900); if (cs !== token) return;
   if (!cs.spawn.fert && Math.random() < RAR[cs.cr.rarity].flee + cs.throws * 0.02) { // las brotadas no huyen
-    cs.phase = 'done'; cImg.className = 'flee'; orb.style.opacity = '0'; ring.style.opacity = '0';
-    flash(`¡${cs.cr.name} ha huido!`, 1600);
+    cs.phase = 'done'; cImg.className = 'flee'; orb.style.opacity = '0'; ring.style.opacity = '0'; ringMax.style.opacity = '0';
+    flash(`¡${cs.cr.name} ha huido!`, 1600); sfx.flee();
     removeSpawn(cs.spawn);
     await sleep(1700); if (cs === token) closeCatch();
     return;
   }
-  resetOrb();
+  resetOrb(true);
 }
 
 async function success(token) {
   cs.phase = 'done';
   orbIn.className = 'orb-inner caught';
-  flash('¡Capturado!', 1400);
+  flash('¡Capturado!', 1600); sfx.success();
+  burst(cs.ox, cs.oy, '#ffd60a', 16, true);
+  burst(cs.ox, cs.oy, '#7cff9b', 14);
   const c = cs.cr, R = RAR[c.rarity], isNew = !save.caught[c.id], prevLvl = levelOf(save.xp);
   save.caught[c.id] = (save.caught[c.id] || 0) + 1;
   if (isNew) save.first[c.id] = Date.now();
@@ -702,18 +917,21 @@ async function success(token) {
   save.xp += gained;
   removeSpawn(cs.spawn);
   updateHud();
-  await sleep(1400); if (cs !== token) return;
+  await sleep(1600); if (cs !== token) return;
   closeCatch();
   showCard(c, { isNew, gained, levelUp: levelOf(save.xp) > prevLvl });
 }
 
-// Arrastrar y lanzar el orbe
+// Arrastrar, girar (curva) y lanzar el orbe
 orb.addEventListener('pointerdown', e => {
   if (!cs || cs.phase !== 'aim') return;
   e.preventDefault();
+  sfx.unlock();
   if (save.orbs <= 0) { flash('¡Sin orbes!'); return; }
   orb.setPointerCapture(e.pointerId);
-  drag = { s: [{ x: e.clientX, y: e.clientY, t: performance.now() }], dx: e.clientX - cs.ox, dy: e.clientY - cs.oy };
+  orb.style.transition = '';
+  drag = { s: [{ x: e.clientX, y: e.clientY, t: performance.now() }], dx: e.clientX - cs.ox, dy: e.clientY - cs.oy,
+    lx: e.clientX, ly: e.clientY, ang: null, turn: 0, curve: 0 };
 });
 orb.addEventListener('pointermove', e => {
   if (!drag || !cs) return;
@@ -721,16 +939,31 @@ orb.addEventListener('pointermove', e => {
   drag.s.push({ x: e.clientX, y: e.clientY, t });
   while (drag.s.length > 2 && t - drag.s[0].t > 90) drag.s.shift();
   setOrb(e.clientX - drag.dx, e.clientY - drag.dy);
+  // Detectar giros: se suma cuánto cambia la dirección del dedo
+  const mx = e.clientX - drag.lx, my = e.clientY - drag.ly;
+  if (Math.hypot(mx, my) > 4) {
+    const a = Math.atan2(my, mx);
+    if (drag.ang !== null) {
+      let d = a - drag.ang;
+      if (d > Math.PI) d -= 2 * Math.PI; else if (d < -Math.PI) d += 2 * Math.PI;
+      drag.turn += d;
+    }
+    drag.ang = a; drag.lx = e.clientX; drag.ly = e.clientY;
+    if (!drag.curve && Math.abs(drag.turn) > Math.PI * 2.5) { // ~1,25 vueltas
+      drag.curve = Math.sign(drag.turn);
+      orbIn.classList.add('curve'); sfx.curve();
+    }
+  }
 });
 orb.addEventListener('pointerup', e => {
   if (!drag || !cs) return;
   const t = performance.now();
   drag.s.push({ x: e.clientX, y: e.clientY, t });
   while (drag.s.length > 2 && t - drag.s[0].t > 90) drag.s.shift();
-  const a = drag.s[0], b = drag.s[drag.s.length - 1], dt = Math.max(1, b.t - a.t);
+  const a = drag.s[0], b = drag.s[drag.s.length - 1], dt = Math.max(1, b.t - a.t), curve = drag.curve;
   drag = null;
   const vx = (b.x - a.x) / dt, vy = (b.y - a.y) / dt;
-  if (vy < -0.5) throwOrb(vx, vy); else resetOrb();
+  if (vy < -0.5) throwOrb(vx, vy, curve); else resetOrb();
 });
 orb.addEventListener('pointercancel', () => { drag = null; resetOrb(); });
 
@@ -767,17 +1000,18 @@ function updateHud() {
 }
 
 // ---------------------------------------------------------------- Álbum / modal
+const known = c => !!(save.caught[c.id] || save.first[c.id]);
 function albumCell(c) {
-  const n = save.caught[c.id] || 0;
+  const n = save.caught[c.id] || 0, k = known(c);
   // Las secretas ni siquiera muestran la silueta hasta capturarlas
-  const pic = !n && c.rarity === 'secreto'
+  const pic = !k && c.rarity === 'secreto'
     ? '<div class="mystery">?</div>'
     : `<img src="${esc(c.url)}" loading="lazy" alt="" draggable="false">`;
-  return `<button class="cell r-${c.rarity} ${n ? '' : 'unknown'}" data-id="${esc(c.id)}" title="${n ? esc(RAR[c.rarity].label) : ''}">
-    ${pic}<span>${n ? esc(c.name) : '???'}</span>${n ? `<b>×${n}</b>` : ''}<i class="rdot"></i></button>`;
+  return `<button class="cell r-${c.rarity} ${k ? '' : 'unknown'} ${n >= FUSE_N ? 'fusable' : ''}" data-id="${esc(c.id)}" title="${k ? esc(RAR[c.rarity].label) : ''}">
+    ${pic}<span>${k ? esc(c.name) : '???'}</span>${k ? `<b>×${n}</b>` : ''}<i class="rdot"></i>${n >= FUSE_N ? '<i class="fuse-badge">🥚</i>' : ''}</button>`;
 }
 function renderAlbum() {
-  const got = list => list.filter(c => save.caught[c.id]).length;
+  const got = list => list.filter(known).length;
   $('#albumCount').textContent = `${got(creatures)} / ${creatures.length}`;
   if (!creatures.length) { $('#albumGrid').innerHTML = '<div class="empty">No hay imágenes todavía.</div>'; return; }
   const groups = new Map();
@@ -802,22 +1036,179 @@ $('#albumGrid').onclick = e => {
   const cell = e.target.closest('.cell'); if (!cell) return;
   const c = creatures.find(x => x.id === cell.dataset.id);
   if (!c) return;
-  if (!save.caught[c.id]) return toast('Aún no has capturado esta criatura.');
+  if (!known(c)) return toast('Aún no has capturado esta criatura.');
   showCard(c, {});
 };
 
-function showCard(c, { isNew, gained, levelUp }) {
+function showCard(c, { isNew, gained, levelUp, hatched }) {
   const n = save.caught[c.id] || 0, first = save.first[c.id];
   const card = $('#modalCard');
   card.className = `card r-${c.rarity}`;
-  card.innerHTML = `${isNew ? '<div class="new">¡NUEVA CRIATURA!</div>' : ''}
+  const canFuse = n >= FUSE_N && !gained;
+  card.innerHTML = `${hatched ? '<div class="new">¡HA ECLOSIONADO!</div>' : isNew ? '<div class="new">¡NUEVA CRIATURA!</div>' : ''}
     <img src="${esc(c.url)}" alt="">
     <h3>${esc(c.name)}</h3><span class="tag">${RAR[c.rarity].label}</span> <span class="tag cat">${esc(c.category || 'Otros')}</span>
     <div class="stats">${gained ? `+${gained} XP<br>` : ''}${levelUp ? `<b>¡Subes a nivel ${levelOf(save.xp)}!</b><br>` : ''}
-    Capturada ${n} ${n === 1 ? 'vez' : 'veces'}${first ? `<br>Primera vez: ${new Date(first).toLocaleDateString('es-ES')}` : ''}</div>
-    <button class="btn">Vale</button>`;
-  card.querySelector('.btn').onclick = () => { $('#modal').hidden = true; };
+    Tienes ${n} ${n === 1 ? 'copia' : 'copias'}${first ? `<br>Primera vez: ${new Date(first).toLocaleDateString('es-ES')}` : ''}</div>
+    ${canFuse ? `<button class="btn fuse">🥚 Fusionar ${FUSE_N} en un huevo</button>
+      <div class="muted fuse-info">Huevo ${RAR[c.rarity].label.toLowerCase()} de «${esc(c.category || 'Otros')}» · hay que andar ${EGG_KM[c.rarity]} km</div>` :
+      n > 0 && !gained ? `<div class="muted fuse-info">Consigue ${FUSE_N} copias para fusionarlas en un huevo (${n}/${FUSE_N}).</div>` : ''}
+    <button class="btn ${canFuse ? 'secondary' : ''} ok">Vale</button>`;
+  card.querySelector('.ok').onclick = () => { $('#modal').hidden = true; };
+  const fb = card.querySelector('.fuse');
+  if (fb) fb.onclick = () => {
+    if (!fb.dataset.sure) { fb.dataset.sure = 1; fb.textContent = `¿Seguro? Se gastan ${FUSE_N} ${c.name}`; return; }
+    fuse(c);
+  };
   $('#modal').hidden = false;
+}
+
+// ---------------------------------------------------------------- Fusión y huevos
+// 5 copias iguales → un huevo de su rareza y su familia (categoría). Se abre andando.
+const FUSE_N = 5, INCUBATORS = 3;
+const EGG_KM = { comun: 1, raro: 2, superraro: 3, epico: 5, legendario: 7, mitico: 10, astral: 12, secreto: 15 };
+// Qué sale del huevo respecto a su rareza: una menos, la misma, una más o dos más
+const HATCH_SHIFT = [[-1, 15], [0, 55], [1, 25], [2, 5]];
+
+const fmtKm = km => km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(km < 10 ? 2 : 1).replace('.', ',')} km`;
+const eggProgress = e => e.start == null ? 0 : Math.min(e.km, save.walked - e.start);
+const eggReady = e => e.start != null && eggProgress(e) >= e.km;
+
+let lastWalk = null;
+function trackWalk(lat, lng, acc, t) {
+  if (acc > 40) return;                                   // posición poco precisa
+  if (!lastWalk) { lastWalk = { lat, lng, t }; return; }
+  const d = distM(lastWalk, { lat, lng }), dt = Math.max(1, (t - lastWalk.t) / 1000);
+  if (d < Math.max(8, acc * 0.6)) return;                 // temblor del GPS: no es andar
+  if (d / dt > 7) { lastWalk = { lat, lng, t }; return; } // > 25 km/h: en coche/bus no cuenta
+  lastWalk = { lat, lng, t };
+  addWalk(d);
+}
+function addWalk(m) {
+  if (!(m > 0)) return;
+  save.walked += m / 1000;
+  fillIncubators();
+  for (const e of save.eggs) if (eggReady(e) && !e.notified) {
+    e.notified = true;
+    toast(`🥚 ¡Un huevo de ${e.family} está listo para eclosionar!`, 4500);
+  }
+  persist(); updateEggBadge();
+  if (!$('#eggs').hidden) renderEggs();
+}
+function fillIncubators() {
+  let busy = save.eggs.filter(e => e.start != null).length;
+  for (const e of save.eggs) if (e.start == null && busy < INCUBATORS) { e.start = save.walked; busy++; }
+}
+function updateEggBadge() {
+  const ready = save.eggs.filter(eggReady).length, b = $('#eggBadge');
+  b.textContent = ready || save.eggs.length || '';
+  b.hidden = !save.eggs.length;
+  b.classList.toggle('ready', ready > 0);
+}
+
+function fuse(c) {
+  if ((save.caught[c.id] || 0) < FUSE_N) return;
+  save.caught[c.id] -= FUSE_N;
+  const egg = { id: 'e' + Date.now().toString(36), family: c.category || 'Otros', rarity: c.rarity, km: EGG_KM[c.rarity],
+    from: c.id, fromName: c.name, created: Date.now(), start: null };
+  save.eggs.push(egg);
+  fillIncubators(); persist(); updateEggBadge();
+  // Animación: las 5 copias se juntan y forman el huevo
+  const card = $('#modalCard');
+  card.className = `card r-${c.rarity}`;
+  card.innerHTML = `<div class="fuse-anim">${Array.from({ length: FUSE_N }, (_, i) =>
+      `<img src="${esc(c.url)}" alt="" style="--a:${i * 360 / FUSE_N}deg">`).join('')}
+      <div class="egg big r-${c.rarity}"></div></div>
+    <h3>¡Huevo ${esc(RAR[c.rarity].label.toLowerCase())}!</h3>
+    <div class="stats">Familia «${esc(egg.family)}» · anda <b>${egg.km} km</b> para abrirlo.<br>
+    ${egg.start != null ? 'Ya está en una incubadora.' : 'Tus incubadoras están llenas: esperará su turno.'}</div>
+    <button class="btn see">Ver mis huevos</button><button class="btn secondary ok">Vale</button>`;
+  sfx.success();
+  card.querySelector('.ok').onclick = () => { $('#modal').hidden = true; };
+  card.querySelector('.see').onclick = () => { $('#modal').hidden = true; openEggs(); };
+  if (!$('#album').hidden) renderAlbum();
+}
+
+function hatchOdds(e) {
+  const fam = creatures.filter(c => c.category === e.family);
+  const pool = fam.length ? fam : creatures;
+  const avail = new Set(pool.map(c => c.rarity));
+  const ei = RAR_ORDER.indexOf(e.rarity), w = new Map();
+  const nearest = idx => { // la rareza disponible más cercana en esa familia
+    for (let d = 0; d < RAR_ORDER.length; d++)
+      for (const k of [idx - d, idx + d]) if (k >= 0 && k < RAR_ORDER.length && avail.has(RAR_ORDER[k])) return RAR_ORDER[k];
+    return null;
+  };
+  for (const [d, pr] of HATCH_SHIFT) {
+    const r = nearest(clamp(ei + d, 0, RAR_ORDER.length - 1));
+    if (r) w.set(r, (w.get(r) || 0) + pr);
+  }
+  return { pool, w: [...w].sort((a, b) => RAR_ORDER.indexOf(a[0]) - RAR_ORDER.indexOf(b[0])) };
+}
+function rollHatch(e) {
+  const { pool, w } = hatchOdds(e);
+  let x = Math.random() * w.reduce((a, v) => a + v[1], 0), rar = w[w.length - 1]?.[0];
+  for (const [r, v] of w) { x -= v; if (x <= 0) { rar = r; break; } }
+  const list = pool.filter(c => c.rarity === rar);
+  return list[Math.floor(Math.random() * list.length)] || pool[0];
+}
+
+function eggHtml(e) {
+  const prog = eggProgress(e), ready = eggReady(e), { w } = hatchOdds(e);
+  const tot = w.reduce((a, v) => a + v[1], 0) || 1;
+  const status = ready ? `<button class="btn hatch" data-id="${e.id}">✨ ¡Eclosionar!</button>`
+    : e.start == null ? '<div class="muted">En espera: tus 3 incubadoras están ocupadas.</div>'
+    : `<div class="bar"><i style="width:${(100 * prog / e.km).toFixed(1)}%"></i></div>
+       <div class="muted">${fmtKm(prog)} de ${e.km} km · faltan ${fmtKm(e.km - prog)}</div>`;
+  return `<div class="egg-row nested r-${e.rarity}">
+    <div class="egg r-${e.rarity} ${ready ? 'ready' : e.start != null ? 'warm' : ''}"></div>
+    <div class="egg-info"><b>Huevo ${esc(RAR[e.rarity].label.toLowerCase())}</b> <span class="tag cat">${esc(e.family)}</span>
+      <div class="muted">De 5 × ${esc(e.fromName)} · ${e.km} km</div>
+      ${status}
+      <div class="egg-odds">${w.map(([r, v]) => `<span class="tag r-${r}">${RAR[r].label} ${Math.round(100 * v / tot)} %</span>`).join(' ')}</div>
+    </div></div>`;
+}
+function renderEggs() {
+  $('#walked').textContent = `Has andado ${fmtKm(save.walked)}`;
+  const box = $('#eggList');
+  if (!save.eggs.length) {
+    box.innerHTML = `<div class="empty"><div class="egg big r-comun" style="margin:0 auto 14px"></div>
+      Aún no tienes huevos.<br>Cuando tengas <b>${FUSE_N} copias</b> de la misma criatura, ábrela en el álbum y pulsa
+      <b>Fusionar</b>. El huevo se abre andando con el móvil (con la app abierta).</div>`;
+    return;
+  }
+  const order = [...save.eggs].sort((a, b) => eggReady(b) - eggReady(a) || (a.start == null) - (b.start == null) || a.created - b.created);
+  box.innerHTML = `<div class="muted" style="margin:0 2px 12px">Incubadoras: ${Math.min(INCUBATORS, save.eggs.filter(e => e.start != null).length)} / ${INCUBATORS} en uso</div>` +
+    order.map(eggHtml).join('');
+}
+function openEggs() { fillIncubators(); renderEggs(); $('#eggs').hidden = false; }
+$('#btnEggs').onclick = openEggs;
+$('#eggList').onclick = e => {
+  const b = e.target.closest('.hatch'); if (!b) return;
+  const egg = save.eggs.find(x => x.id === b.dataset.id);
+  if (egg && eggReady(egg)) hatch(egg);
+};
+
+async function hatch(egg) {
+  const c = rollHatch(egg);
+  if (!c) return toast('No hay criaturas en el repositorio');
+  save.eggs = save.eggs.filter(x => x !== egg);
+  const isNew = !save.caught[c.id] && !save.first[c.id], prevLvl = levelOf(save.xp);
+  save.caught[c.id] = (save.caught[c.id] || 0) + 1;
+  if (!save.first[c.id]) save.first[c.id] = Date.now();
+  const gained = RAR[c.rarity].xp + (isNew ? 500 : 0) + 200;
+  save.xp += gained;
+  fillIncubators(); persist(); updateHud(); updateEggBadge(); renderEggs();
+  // Animación: el huevo tiembla, se agrieta y se abre
+  const card = $('#modalCard');
+  card.className = `card r-${egg.rarity}`;
+  card.innerHTML = `<div class="hatch-anim"><div class="egg big r-${egg.rarity} shaking"></div></div><h3>…</h3><div class="stats">¡Se está moviendo!</div>`;
+  $('#modal').hidden = false;
+  for (let i = 0; i < 3; i++) { sfx.shake(); await sleep(700); }
+  card.querySelector('.egg').classList.add('crack'); sfx.breakOut();
+  await sleep(600);
+  sfx.success();
+  showCard(c, { isNew, gained, levelUp: levelOf(save.xp) > prevLvl, hatched: true });
 }
 
 // ---------------------------------------------------------------- Paneles y ajustes
@@ -825,6 +1216,7 @@ $('#btnAlbum').onclick = () => { renderAlbum(); $('#album').hidden = false; };
 $('#btnSettings').onclick = () => {
   $('#sourceInfo').textContent = `${sourceName} — ${creatures.length} criaturas`;
   $('#chkDev').checked = save.dev;
+  $('#chkSound').checked = save.sound;
   $('#folderName').textContent = CFG.folder || '(raíz)';
   $('#settings').hidden = false;
 };
@@ -834,6 +1226,7 @@ $('#chkDev').onchange = e => {
   if (!save.dev && manualPos) { manualPos = false; toast('Volviendo a tu ubicación GPS…'); }
   refreshSpawns(); refreshStops();
 };
+$('#chkSound').onchange = e => { save.sound = e.target.checked; persist(); if (save.sound) sfx.success(); };
 $('#btnReload').onclick = async () => {
   $('#sourceInfo').textContent = 'Cargando…';
   await initCreatures(true);
@@ -843,7 +1236,7 @@ $('#btnReload').onclick = async () => {
 $('#btnReset').onclick = () => {
   if (!confirm('¿Seguro? Se borrarán tus capturas y tu experiencia.')) return;
   save.caught = {}; save.first = {}; save.xp = 0; save.gone = {};
-  save.orbs = CFG.orbsStart; save.stops = {}; save.visited = {}; save.coins = CFG.coinsStart; save.fert = {}; persist();
+  save.orbs = CFG.orbsStart; save.stops = {}; save.visited = {}; save.coins = CFG.coinsStart; save.fert = {}; save.eggs = []; save.walked = 0; persist(); updateEggBadge();
   updateHud(); refreshSpawns(); refreshStops(); toast('Progreso borrado');
 };
 
@@ -857,6 +1250,7 @@ async function initCreatures(force) {
 
 // ---------------------------------------------------------------- Arranque
 updateHud();
+updateEggBadge();
 setStatus('Cargando imágenes…');
 Promise.all([initCreatures(false), loadParadas()]).then(() => {
   startGeo();
