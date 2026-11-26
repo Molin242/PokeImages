@@ -1,0 +1,14 @@
+{
+  "name": "FotoCaza",
+  "short_name": "FotoCaza",
+  "description": "Sal a la calle y captura las criaturas de tu repositorio de imágenes.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#0f1724",
+  "theme_color": "#0f1724",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

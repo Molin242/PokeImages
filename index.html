@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#0f1724">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>FotoCaza</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- MAPA -->
+  <div id="map"></div>
+
+  <div id="hud-top">
+    <div class="level" title="Nivel"><span id="lvl">1</span></div>
+    <div class="xp"><div id="xpbar"></div><span id="xptext">0 XP</span></div>
+    <div id="status" class="pill">Cargando…</div>
+  </div>
+
+  <div id="hud-bottom">
+    <button id="btnAlbum" class="round" aria-label="Álbum">📖<small>Álbum</small></button>
+    <button id="btnCenter" class="round big" aria-label="Centrar">◎</button>
+    <button id="btnSettings" class="round" aria-label="Ajustes">⚙️<small>Ajustes</small></button>
+  </div>
+
+  <div id="toast"></div>
+
+  <!-- PANTALLA DE CAPTURA -->
+  <section id="catch" hidden>
+    <video id="cam" autoplay playsinline muted hidden></video>
+    <div class="catch-top">
+      <button id="btnRun" class="btn-top">✕ Huir</button>
+      <div id="catchName"></div>
+      <button id="btnCam" class="btn-top" aria-label="Cámara">📷</button>
+    </div>
+    <div id="target"><div id="ring"></div><img id="creatureImg" alt="" draggable="false"></div>
+    <div id="orb"><div class="orb-inner"></div></div>
+    <div id="catchMsg"></div>
+    <div id="catchHint" class="hint">Desliza el orbe hacia arriba para lanzarlo.<br>¡Acierta cuando el anillo sea pequeño!</div>
+  </section>
+
+  <!-- ÁLBUM -->
+  <section id="album" class="panel" hidden>
+    <header><h2>Álbum</h2><span id="albumCount" class="tag"></span><button class="close" data-close="album">✕</button></header>
+    <div class="body"><div id="albumGrid"></div></div>
+  </section>
+
+  <!-- AJUSTES -->
+  <section id="settings" class="panel" hidden>
+    <header><h2>Ajustes</h2><button class="close" data-close="settings">✕</button></header>
+    <div class="body">
+      <div class="row">
+        <div><b>Imágenes</b><div id="sourceInfo" class="muted"></div></div>
+        <button id="btnReload" class="btn secondary small">↻ Recargar</button>
+      </div>
+      <label class="row">
+        <div><b>Modo prueba</b><div class="muted">Captura a cualquier distancia y toca el mapa para moverte (útil desde casa o el PC).</div></div>
+        <input type="checkbox" id="chkDev">
+      </label>
+      <div class="help">
+        <b>¿Cómo añado criaturas?</b>
+        <p>Sube imágenes (png, jpg, webp, gif, svg) a la carpeta <code id="folderName">imagenes</code> del repositorio. El nombre del archivo es el nombre de la criatura.</p>
+        <p>Rareza: termina el nombre en <code>_raro</code>, <code>_epico</code> o <code>_legendario</code> (ej. <code>dragon_epico.png</code>), o ponlas en subcarpetas con ese nombre. Si no, es común.</p>
+      </div>
+      <button id="btnReset" class="btn danger">Borrar mi progreso</button>
+    </div>
+  </section>
+
+  <!-- MODAL -->
+  <div id="modal" hidden><div class="card" id="modalCard"></div></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
