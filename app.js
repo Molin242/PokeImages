@@ -5,7 +5,8 @@
 const CFG = Object.assign({
   owner: '', repo: '', branch: '', folder: 'imagenes',
   catchRadius: 60, cellSize: 0.0015, cellRange: 2, slotMinutes: 15,
-  defaultLocation: [40.4168, -3.7038]
+  defaultLocation: [40.4168, -3.7038],
+  orbsStart: 30, orbsMax: 100, stopCooldownMin: 5, autoParadas: true, stopViewRadius: 1500
 }, window.FOTOCAZA_CONFIG || {});
 
 const $ = s => document.querySelector(s);
@@ -31,7 +32,8 @@ const MOVE = { comun: [0.06, 0.7], raro: [0.14, 1.0], epico: [0.22, 1.3], legend
 const SAVE_KEY = 'fotocaza_v1';
 let save;
 try { save = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}'); } catch { save = {}; }
-save = Object.assign({ caught: {}, first: {}, xp: 0, gone: {}, dev: false, cam: false }, save);
+save = Object.assign({ caught: {}, first: {}, xp: 0, gone: {}, dev: false, cam: false,
+  orbs: CFG.orbsStart, stops: {}, visited: {} }, save);
 for (const k in save.gone) if (Date.now() - save.gone[k] > 864e5) delete save.gone[k];
 const persist = () => localStorage.setItem(SAVE_KEY, JSON.stringify(save));
 
@@ -210,7 +212,110 @@ function setPlayer(lat, lng) {
   if (first) { meMarker.addTo(map); rangeCircle.addTo(map); map.setView(player, 17); }
   else if (follow) map.panTo(player, { animate: true });
   refreshSpawns();
+  refreshStops();
+  if (autoStops) OSM.asegurar(OSM.celdasAlrededor(lat, lng), refreshStops);
 }
+
+// ---------------------------------------------------------------- Paradas (recarga de orbes)
+let customStops = [], hiddenStops = new Set(), autoStops = CFG.autoParadas;
+const stopMarkers = new Map();
+const cooldownMs = () => CFG.stopCooldownMin * 60e3;
+const stopReadyIn = s => Math.max(0, (save.stops[s.id] || 0) + cooldownMs() - Date.now());
+
+async function loadParadas() {
+  try {
+    const r = await fetch('paradas.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
+    const arr = Array.isArray(d) ? d : (d.paradas || []);
+    customStops = arr.filter(p => isFinite(p.lat) && isFinite(p.lng)).map(p => ({
+      id: String(p.id || `p_${p.lat}_${p.lng}`), nombre: p.nombre || 'Parada', descripcion: p.descripcion || '',
+      lat: +p.lat, lng: +p.lng, foto: p.foto || '', custom: true }));
+    hiddenStops = new Set(d.ocultas || []);
+    if (d.auto === false) autoStops = false;
+  } catch (e) { console.warn('paradas.json', e); }
+}
+
+function visibleStops() {
+  if (!player) return [];
+  const near = s => distM(player, s) <= CFG.stopViewRadius;
+  const custom = customStops.filter(near);
+  let auto = [];
+  if (autoStops) auto = OSM.enCeldas(OSM.celdasAlrededor(player.lat, player.lng))
+    .filter(s => near(s) && !hiddenStops.has(s.id) && customStops.every(c => OSM.metros(c, s) > 40));
+  return custom.concat(auto);
+}
+
+function stopHtml(s) {
+  return `<div class="stop ${stopReadyIn(s) ? 'used' : ''}"><div class="disc">${s.foto
+    ? `<img src="${esc(s.foto)}" alt="" draggable="false" onerror="this.remove()">` : ''}<span>★</span></div><div class="pole"></div></div>`;
+}
+
+function refreshStops() {
+  if (!player) return;
+  const list = visibleStops(), ids = new Set(list.map(s => s.id));
+  for (const [id, m] of stopMarkers) if (!ids.has(id)) { map.removeLayer(m); stopMarkers.delete(id); }
+  for (const s of list) {
+    let m = stopMarkers.get(s.id);
+    if (!m) {
+      m = L.marker([s.lat, s.lng], {
+        icon: L.divIcon({ className: '', iconSize: [44, 66], iconAnchor: [22, 64], html: stopHtml(s) }), zIndexOffset: -500
+      }).addTo(map);
+      m.on('click', () => openStop(m.stop));
+      stopMarkers.set(s.id, m);
+    }
+    m.stop = s;
+    m.getElement()?.firstElementChild?.classList.toggle('used', stopReadyIn(s) > 0);
+  }
+}
+
+const stopPanel = $('#stopPanel');
+let openStopData = null, stopTimer = null;
+function openStop(s) {
+  if (cs) return;
+  openStopData = s;
+  const disc = $('#stopDisc');
+  disc.className = 'stop-disc';
+  disc.innerHTML = s.foto ? `<img src="${esc(s.foto)}" alt="" onerror="this.remove()">` : '';
+  $('#stopName').textContent = s.nombre;
+  $('#stopDesc').textContent = s.descripcion || '';
+  $('#stopGain').textContent = '';
+  stopPanel.hidden = false;
+  updateStopPanel();
+  clearInterval(stopTimer); stopTimer = setInterval(updateStopPanel, 1000);
+}
+function closeStop() { stopPanel.hidden = true; openStopData = null; clearInterval(stopTimer); }
+function updateStopPanel() {
+  const s = openStopData; if (!s || !player) return;
+  const d = distM(player, s), wait = stopReadyIn(s), btn = $('#stopBtn');
+  $('#stopDisc').classList.toggle('used', wait > 0);
+  let txt = '', ok = false;
+  if (wait > 0) { const sec = Math.ceil(wait / 1000); txt = `Disponible en ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; }
+  else if (d > CFG.catchRadius && !save.dev) txt = `Acércate más (estás a ${Math.round(d)} m)`;
+  else if (save.orbs >= CFG.orbsMax) txt = `Mochila llena (${CFG.orbsMax} orbes)`;
+  else { txt = 'Recoger orbes'; ok = true; }
+  btn.textContent = txt; btn.disabled = !ok;
+  $('#stopInfo').textContent = `${s.custom ? 'Parada del grupo' : 'Sitio de OpenStreetMap'} · ${Math.round(d)} m · tienes ${save.orbs} orbes`;
+}
+function collectStop() {
+  const s = openStopData;
+  if (!s || $('#stopBtn').disabled) return;
+  const first = !save.visited[s.id];
+  const n = Math.min(CFG.orbsMax - save.orbs, 3 + Math.floor(Math.random() * 3) + (first ? 5 : 0));
+  const xp = 50 + (first ? 250 : 0), prevLvl = levelOf(save.xp);
+  save.orbs += n; save.xp += xp; save.stops[s.id] = Date.now(); save.visited[s.id] = true;
+  persist(); updateHud();
+  const disc = $('#stopDisc');
+  disc.classList.remove('spin'); void disc.offsetWidth; disc.classList.add('spin');
+  const g = $('#stopGain');
+  g.innerHTML = `+${n} orbes · +${xp} XP${first ? '<br><small>¡Primera visita!</small>' : ''}${levelOf(save.xp) > prevLvl ? `<br><b>¡Nivel ${levelOf(save.xp)}!</b>` : ''}`;
+  g.classList.remove('pop'); void g.offsetWidth; g.classList.add('pop');
+  updateStopPanel(); refreshStops();
+}
+$('#stopBtn').onclick = collectStop;
+$('#stopDisc').onclick = collectStop;
+$('#stopClose').onclick = closeStop;
+stopPanel.onclick = e => { if (e.target === stopPanel) closeStop(); };
 
 function refreshSpawns() {
   if (!player) return;
@@ -267,7 +372,7 @@ function startGeo() {
 }
 
 function tryEncounter(s) {
-  if (cs || !player) return;
+  if (cs || !player || openStopData) return;
   const d = distM(player, s);
   if (d > CFG.catchRadius && !save.dev) {
     toast(`${s.creature.name} está a ${Math.round(d)} m. ¡Acércate más!`);
@@ -288,7 +393,9 @@ function openCatch(spawn) {
   cImg.src = c.url; cImg.className = '';
   target.className = `r-${c.rarity}`; ring.style.opacity = '';
   $('#catchName').innerHTML = `${esc(c.name)} <span class="tag r-${c.rarity}">${RAR[c.rarity].label}</span>`;
-  catchEl.hidden = false; $('#catchHint').hidden = false; cMsg.classList.remove('show');
+  catchEl.hidden = false; cMsg.classList.remove('show');
+  const hint = $('#catchHint');
+  hint.hidden = false; hint.innerHTML = 'Desliza el orbe hacia arriba para lanzarlo.<br>¡Acierta cuando el anillo sea pequeño!';
   layout(); resetOrb();
   if (save.cam) startCam();
   cs.raf = requestAnimationFrame(loop);
@@ -319,10 +426,15 @@ function setOrb(x, y, s = 1, rot = 0) {
 function resetOrb() {
   if (!cs) return;
   cs.phase = 'aim'; cs.fl = null;
-  orb.style.transition = ''; orb.style.opacity = '';
+  orb.style.transition = ''; orb.style.opacity = save.orbs > 0 ? '' : '0.25';
   orbIn.className = 'orb-inner';
   btnRun.disabled = false;
   setOrb(cs.rest.x, cs.rest.y);
+  $('#orbLeft').textContent = `◉ ×${save.orbs}`;
+  if (save.orbs <= 0) {
+    const h = $('#catchHint');
+    h.hidden = false; h.innerHTML = '<b>¡No te quedan orbes!</b><br>Visita una parada del mapa para recargar.';
+  }
 }
 function flash(text, ms = 1100) {
   cMsg.textContent = text; cMsg.classList.add('show');
@@ -356,6 +468,8 @@ function throwOrb(vxms, vyms) {
   const vx = clamp((vxms / -vyms) * (-dy) / FR, -30, 30);
   cs.fl = { x: x0, y: y0, vx, vy, g, f: 0, rot: 0, checked: false };
   cs.phase = 'flying';
+  save.orbs = Math.max(0, save.orbs - 1); persist(); updateHud();
+  $('#orbLeft').textContent = `◉ ×${save.orbs}`;
   $('#catchHint').hidden = true;
 }
 
@@ -429,6 +543,7 @@ async function success(token) {
 orb.addEventListener('pointerdown', e => {
   if (!cs || cs.phase !== 'aim') return;
   e.preventDefault();
+  if (save.orbs <= 0) { flash('¡Sin orbes!'); return; }
   orb.setPointerCapture(e.pointerId);
   drag = { s: [{ x: e.clientX, y: e.clientY, t: performance.now() }], dx: e.clientX - cs.ox, dy: e.clientY - cs.oy };
 });
@@ -479,6 +594,7 @@ function updateHud() {
   $('#lvl').textContent = L;
   $('#xpbar').style.width = ((save.xp - a) / (b - a) * 100).toFixed(1) + '%';
   $('#xptext').textContent = `${save.xp - a} / ${b - a} XP`;
+  $('#orbCount').textContent = save.orbs;
 }
 
 // ---------------------------------------------------------------- Álbum / modal
@@ -526,7 +642,7 @@ document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => { $('#'
 $('#chkDev').onchange = e => {
   save.dev = e.target.checked; persist();
   if (!save.dev && manualPos) { manualPos = false; toast('Volviendo a tu ubicación GPS…'); }
-  refreshSpawns();
+  refreshSpawns(); refreshStops();
 };
 $('#btnReload').onclick = async () => {
   $('#sourceInfo').textContent = 'Cargando…';
@@ -536,8 +652,9 @@ $('#btnReload').onclick = async () => {
 };
 $('#btnReset').onclick = () => {
   if (!confirm('¿Seguro? Se borrarán tus capturas y tu experiencia.')) return;
-  save.caught = {}; save.first = {}; save.xp = 0; save.gone = {}; persist();
-  updateHud(); refreshSpawns(); toast('Progreso borrado');
+  save.caught = {}; save.first = {}; save.xp = 0; save.gone = {};
+  save.orbs = CFG.orbsStart; save.stops = {}; save.visited = {}; persist();
+  updateHud(); refreshSpawns(); refreshStops(); toast('Progreso borrado');
 };
 
 async function initCreatures(force) {
@@ -551,9 +668,9 @@ async function initCreatures(force) {
 // ---------------------------------------------------------------- Arranque
 updateHud();
 setStatus('Cargando imágenes…');
-initCreatures(false).then(() => {
+Promise.all([initCreatures(false), loadParadas()]).then(() => {
   startGeo();
-  setInterval(refreshSpawns, 20000); // las apariciones rotan cada pocos minutos
+  setInterval(() => { refreshSpawns(); refreshStops(); }, 20000); // apariciones y paradas se renuevan
 });
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost'))
   navigator.serviceWorker.register('sw.js').catch(() => {});

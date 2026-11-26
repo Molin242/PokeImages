@@ -20,6 +20,7 @@
   <div id="hud-top">
     <div class="level" title="Nivel"><span id="lvl">1</span></div>
     <div class="xp"><div id="xpbar"></div><span id="xptext">0 XP</span></div>
+    <div class="pill orbs" title="Orbes"><i class="mini-orb"></i><span id="orbCount">0</span></div>
     <div id="status" class="pill">Cargando…</div>
   </div>
 
@@ -42,8 +43,22 @@
     <div id="target"><div id="ring"></div><img id="creatureImg" alt="" draggable="false"></div>
     <div id="orb"><div class="orb-inner"></div></div>
     <div id="catchMsg"></div>
+    <div id="orbLeft" class="orb-left"></div>
     <div id="catchHint" class="hint">Desliza el orbe hacia arriba para lanzarlo.<br>¡Acierta cuando el anillo sea pequeño!</div>
   </section>
+
+  <!-- PARADA -->
+  <div id="stopPanel" hidden>
+    <div class="stop-card">
+      <button id="stopClose" class="close" aria-label="Cerrar">✕</button>
+      <div id="stopDisc" class="stop-disc"></div>
+      <h3 id="stopName"></h3>
+      <p id="stopDesc"></p>
+      <div id="stopGain"></div>
+      <button id="stopBtn" class="btn">Recoger orbes</button>
+      <div id="stopInfo" class="muted"></div>
+    </div>
+  </div>
 
   <!-- ÁLBUM -->
   <section id="album" class="panel" hidden>
@@ -68,6 +83,11 @@
         <p>Sube imágenes (png, jpg, webp, gif, svg) a la carpeta <code id="folderName">imagenes</code> del repositorio. El nombre del archivo es el nombre de la criatura.</p>
         <p>Rareza: termina el nombre en <code>_raro</code>, <code>_epico</code> o <code>_legendario</code> (ej. <code>dragon_epico.png</code>), o ponlas en subcarpetas con ese nombre. Si no, es común.</p>
       </div>
+      <div class="help">
+        <b>Paradas</b>
+        <p>Toca una parada del mapa cuando estés cerca para recoger orbes. Cada parada se recarga a los pocos minutos.</p>
+        <p>Desde el ordenador puedes colocar paradas con foto en el <a href="editor.html" target="_blank">editor de paradas</a>.</p>
+      </div>
       <button id="btnReset" class="btn danger">Borrar mi progreso</button>
     </div>
   </section>
@@ -77,6 +97,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="config.js"></script>
+  <script src="osm.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
