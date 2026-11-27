@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FotoCaza · Editor de criaturas</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    html,body{overflow:auto;height:auto;min-height:100%}
+    body.cr-ed{touch-action:auto;background:linear-gradient(160deg,#cfe4ff,#e9dcff) fixed}
+    @media (prefers-color-scheme:dark){ body.cr-ed{background:linear-gradient(160deg,#141a2b,#24183a) fixed} }
+    .wrap{max-width:1280px;margin:0 auto;padding:18px;display:grid;grid-template-columns:1fr 380px;gap:18px;align-items:start}
+    @media (max-width:900px){ .wrap{grid-template-columns:1fr} .side{position:static!important} }
+    .glass-box{background:var(--sheen),var(--glass-strong);-webkit-backdrop-filter:var(--blur-strong);backdrop-filter:var(--blur-strong);
+      border:1px solid var(--edge);box-shadow:var(--hi),var(--shadow);border-radius:28px;padding:18px}
+    .top{grid-column:1/-1;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+    .top h1{margin:0;font-size:26px;font-weight:800;letter-spacing:-.03em}
+    .top a{font-size:13px;font-weight:600;text-decoration:none}
+    .top .src{margin-left:auto;font-size:13px;color:var(--sub)}
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+    .toolbar input,.toolbar select,.side input,.side select,.side textarea{font:inherit;font-size:14px;color:var(--text);background:var(--glass-nested);
+      border:1px solid var(--edge-soft);border-radius:14px;padding:10px 12px;outline:none}
+    .toolbar input{flex:1;min-width:180px}
+    .toolbar input:focus,.side input:focus,.side select:focus,.side textarea:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(10,132,255,.2)}
+    .toolbar .btn{width:auto;margin:0}
+    .fam{margin:18px 2px 10px;font-size:19px;font-weight:800;display:flex;align-items:center;gap:8px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+    .it{position:relative;border-radius:18px;padding:8px;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;cursor:pointer;
+      background:var(--sheen),var(--glass-nested);border:2px solid color-mix(in srgb,var(--rc) 55%,transparent);box-shadow:var(--hi);color:var(--text)}
+    .it.sel{border-color:var(--accent);box-shadow:var(--hi),0 0 0 4px rgba(10,132,255,.25)}
+    .it img{width:100%;aspect-ratio:1;object-fit:contain}
+    .it b{font-size:13px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .it .tag{font-size:9px}
+    .it .mini-etq{font-size:10px;color:var(--accent);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .it .flag{position:absolute;top:6px;left:6px;font-size:9px;font-weight:800;color:#fff;border-radius:999px;padding:2px 6px;background:#34c759}
+    .it .flag.mod{background:#ff9f0a}
+    .side{position:sticky;top:18px;display:flex;flex-direction:column;gap:10px;max-height:calc(100vh - 36px);overflow:auto}
+    .side h2{margin:0;font-size:20px;font-weight:800}
+    .side label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:var(--sub)}
+    .side textarea{resize:vertical;min-height:70px}
+    .drop{height:200px;border-radius:18px;border:2px dashed var(--sub);display:grid;place-items:center;text-align:center;color:var(--sub);
+      font-size:13px;position:relative;overflow:hidden;cursor:pointer;background:var(--glass-nested)}
+    .drop.over{border-color:var(--accent);background:rgba(10,132,255,.12)}
+    .drop img{position:absolute;inset:8px;width:calc(100% - 16px);height:calc(100% - 16px);object-fit:contain}
+    .chips-in{display:flex;flex-wrap:wrap;gap:6px;padding:8px;border-radius:14px;background:var(--glass-nested);border:1px solid var(--edge-soft)}
+    .chips-in input{flex:1;min-width:110px;border:0!important;background:transparent!important;box-shadow:none!important;padding:4px!important}
+    .chip-e{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;padding:4px 6px 4px 10px;border-radius:999px;color:var(--accent);
+      background:color-mix(in srgb,var(--accent) 12%,transparent);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent)}
+    .chip-e button{border:0;background:none;color:inherit;font-size:14px;line-height:1;padding:0 2px;cursor:pointer}
+    .path{font-size:11px;color:var(--sub);word-break:break-all;background:var(--glass-nested);border-radius:10px;padding:6px 8px}
+    .row2{display:flex;gap:8px}
+    .row2 .btn{margin:0}
+    .bottom{grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap;position:sticky;bottom:12px}
+    .bottom .btn{width:auto;margin:0}
+    .bottom details{font-size:13px;color:var(--sub);flex:1;min-width:260px}
+    .bottom summary{cursor:pointer;color:var(--accent);font-weight:600}
+    .bottom ol{margin:6px 0;padding-left:20px;line-height:1.6}
+    .banner{grid-column:1/-1;background:rgba(255,204,0,.18);border:1px solid rgba(255,204,0,.5);border-radius:18px;padding:11px 14px;font-size:14px}
+    .banner button{margin-left:8px;background:#ffcc00;color:#2a2200;border:0;border-radius:999px;padding:5px 12px;font-weight:700}
+    #pending{font-weight:700}
+    .hint-s{font-size:12px;color:var(--sub);margin:0}
+  </style>
+</head>
+<body class="cr-ed">
+  <div class="wrap">
+    <div class="top glass-box">
+      <h1>🦋 Editor de criaturas</h1>
+      <a href="./">← Volver al juego</a> <a href="editor.html">📍 Editor de paradas</a>
+      <span class="src" id="src">Cargando…</span>
+    </div>
+    <div id="banner" class="banner" hidden></div>
+
+    <main class="glass-box">
+      <div class="toolbar">
+        <input id="q" type="search" placeholder="🔍 Buscar por nombre, familia o etiqueta">
+        <select id="fRar"><option value="">Todas las rarezas</option></select>
+        <button class="btn" id="btnNew">➕ Añadir criatura</button>
+      </div>
+      <div id="list"></div>
+    </main>
+
+    <aside class="side glass-box" id="side">
+      <h2 id="fTitle">Elige una criatura</h2>
+      <p class="hint-s" id="fHint">Haz clic en una criatura para editarla, o pulsa <b>Añadir criatura</b> para subir una imagen nueva.</p>
+      <div id="form" hidden>
+        <div class="drop" id="drop"><span id="dropTxt">📷 Arrastra aquí la imagen<br>o haz clic para elegirla<br><small>(se reduce sola a 600 px)</small></span><img id="dropImg" alt="" hidden></div>
+        <input type="file" id="file" accept="image/*" hidden>
+        <label>Nombre <input id="fName" maxlength="40" placeholder="Ej. Pou dorado"></label>
+        <label>Rareza <select id="fRarity"></select></label>
+        <label>Familia (clase) <input id="fCat" maxlength="40" list="cats" placeholder="Ej. Pou Series"></label>
+        <datalist id="cats"></datalist>
+        <label>Etiquetas <span class="chips-in" id="tagsBox"><input id="fTag" list="tagList" placeholder="escribe y pulsa Intro"></span></label>
+        <datalist id="tagList"></datalist>
+        <label>Descripción <textarea id="fDesc" maxlength="300" placeholder="Algo curioso sobre esta criatura"></textarea></label>
+        <div class="path" id="fPath"></div>
+        <div class="row2">
+          <button class="btn secondary small" id="btnReset">↺ Deshacer cambios</button>
+          <button class="btn danger small" id="btnRemove" hidden>🗑 Quitar</button>
+        </div>
+      </div>
+    </aside>
+
+    <div class="bottom glass-box">
+      <span id="pending">Sin cambios</span>
+      <button class="btn" id="btnZip">⬇ Descargar cambios (ZIP)</button>
+      <details>
+        <summary>¿Cómo lo subo a GitHub?</summary>
+        <ol>
+          <li>Pulsa <b>Descargar cambios</b> y descomprime el ZIP (clic derecho → Extraer todo).</li>
+          <li>En tu repositorio de GitHub (en la página principal, no dentro de ninguna carpeta): <b>Add file → Upload files</b>.</li>
+          <li>Arrastra la carpeta <b>imagenes</b> que sale del ZIP y pulsa <b>Commit changes</b>. Se añaden las criaturas nuevas y se actualiza <code>criaturas.json</code>.</li>
+          <li>En 1–2 minutos estarán en el juego.</li>
+        </ol>
+      </details>
+    </div>
+  </div>
+  <div id="toast"></div>
+
+  <script src="config.js"></script>
+  <script src="criaturas.js"></script>
+</body>
+</html>

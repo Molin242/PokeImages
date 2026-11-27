@@ -15,7 +15,7 @@ imagen nueva a la carpeta `imagenes/`, aparece en el juego para todos.
 
 1. Crea un repositorio **público** en GitHub (por ejemplo `fotocaza`).
 2. Sube todos estos archivos a la raíz del repositorio (`index.html`, `app.js`, `osm.js`, `style.css`, `config.js`,
-   `sw.js`, `manifest.webmanifest`, `icon.svg`, `editor.html`, `editor.js`, `paradas.json`, `cloud.js`, `firebase-reglas.txt` y la carpeta `imagenes/`).
+   `sw.js`, `manifest.webmanifest`, `icon.svg`, `editor.html`, `editor.js`, `paradas.json`, `cloud.js`, `firebase-reglas.txt`, `criaturas.html`, `criaturas.js` y la carpeta `imagenes/`).
 3. En el repositorio: **Settings → Pages → Source: Deploy from a branch → `main` / `(root)` → Save**.
 4. En un par de minutos la app estará en `https://TU-USUARIO.github.io/fotocaza/`.
 5. Ábrela en el móvil y, en el menú del navegador, pulsa **"Añadir a pantalla de inicio"** / **"Instalar app"**.
@@ -129,6 +129,111 @@ Los huevos se abren **andando** con la app abierta (botón 🥚 de la barra infe
   Solo cuenta mientras la app está abierta (una web no puede usar el GPS cerrada).
 - En **Modo prueba**, moverte tocando el mapa también cuenta como andar.
 
+## Bienvenida
+
+La primera vez que alguien abre el juego ve una pequeña guía de 6 pantallas y recibe 5 superorbes. Se puede repetir en **Ajustes → ❓ Ver la bienvenida otra vez**.
+
+## Quimeras 🧬
+
+En el álbum, botón **🧬**: elige dos de tus criaturas y cómo cortarlas (◧ vertical u ⬒ horizontal) y verás la mezcla
+al momento. Por 25 todocoins nace una **criatura nueva** con un nombre mezclado (lo puedes cambiar).
+- Tus quimeras se quedan en tu colección.
+- Con la sesión iniciada se comparten: en la **galería de los amigos** cada uno vota con ❤️ las que más le gustan
+  (las tuyas no las puedes votar) y la más votada de la semana se lleva la **👑 corona**.
+
+## Caza de color 🎨
+
+En 📋 → «Caza de color» ves el **color del día** (el mismo para todos los amigos). Busca algo de ese color en la vida
+real (una flor, un coche, una puerta, una camiseta…) y hazle una foto de cerca. El juego mira qué color domina en la
+foto y, si es el del día, **invoca una criatura cuya imagen es de ese color** (las raras salen más de lo normal).
+- 3 intentos al día y una invocación. Los blancos, negros y grises no cuentan: acércate para que el color llene la foto.
+- 🔒 La foto **no se sube a ningún sitio**: se analiza en tu móvil y se descarta.
+- Debajo ves qué amigos lo han conseguido hoy.
+
+## Combo de capturas ⚡
+
+Si capturas otra criatura antes de 3 minutos, el combo sube (×2, ×3… hasta ×10) y cada paso da un 10 % más de XP.
+Encima de la barra de abajo ves el combo y el tiempo que te queda. Si una criatura se te escapa y huye, lo pierdes.
+Tu récord sale en tu perfil y en la clasificación (pestaña ⚡ Combo).
+
+## Sensor de criaturas ocultas 📡
+
+Además de las criaturas normales hay **criaturas ocultas** (suelen ser más raras) que no salen en el mapa ni en la
+barra de raras. Solo las detecta el sensor, y **solo mientras andas**: a menos de 150 m el móvil vibra, pita y el
+📡 de abajo a la izquierda late. Cuanto más cerca estás, más deprisa y más fuerte. No hay flechas ni distancias:
+prueba direcciones y sigue la vibración. A 25 m la encuentras y empieza la captura.
+- En iPhone el navegador no permite vibrar: allí te guías por el pitido (con el sonido activado) y por el 📡.
+- Cambian cada 15 minutos, como las demás.
+
+## Niebla de exploración
+
+El mapa está cubierto de una niebla suave que se despeja por donde pasas (unos 70 m alrededor). Lo explorado se queda
+guardado y cuenta en tu perfil como «🌫️ Zonas exploradas». Si prefieres el mapa limpio: **Ajustes → Niebla de exploración**.
+
+## Clima y hora reales
+
+Arriba a la derecha ves el tiempo real de tu zona (☀️ 🌧️ ❄️ 🌫️ 💨 ⛈️ 🌙). Cambia lo que aparece:
+- Salen **el triple** las criaturas cuyas **etiquetas** (las del editor de criaturas) encajan con el tiempo:
+  lluvia → `#lluvia #agua #mar #pez #rana` · sol → `#sol #fuego #calor #verano #playa` · nieve → `#nieve #hielo #frio`
+  · niebla → `#niebla #fantasma #misterio` · tormenta → `#tormenta #electrico #rayo` · viento/nubes → `#aire #volador`
+  · noche → `#noche #oscuridad #luna #fantasma #cosmico #estrella`.
+- **De noche** el mapa se oscurece y las criaturas épicas o mejores salen un 50 % más.
+
+Se usa Open-Meteo (gratis, sin claves) y solo se envía la zona aproximada (unos 10 km), no tu posición exacta.
+
+## Eventos
+
+Los eventos activos salen arriba del panel 📋 (y avisan al empezar):
+- **⏰ Hora feliz** (todos los días de 18:00 a 19:00): doble XP y doble de todocoins en paradas.
+- **✨ Fin de semana brillante** (sábado y domingo): las brillantes salen el triple.
+- **⭐ Familia de la semana**: cada semana una familia de vuestras imágenes sale el triple.
+- **🌅 Hora dorada** (amanecer y atardecer reales de tu zona, calculados con la posición del sol): el mapa se vuelve dorado, XP ×2 y el doble de brillantes. Empieza 30 min antes de la puesta de sol (y 10 min antes del amanecer).
+- **Los vuestros**, en `eventos.json` (en la raíz del repositorio). Ejemplo:
+  `{"nombre":"Noche de Halloween","icono":"🎃","desde":"2026-10-31T18:00","hasta":"2026-11-01T02:00","etiqueta":"fantasma","familia":"Pou Series","xp":2,"brillo":2,"monedas":1.5,"texto":"¡Fantasmas por todas partes!"}`
+  (`familia` y `etiqueta` hacen que esas criaturas salgan el triple; `xp`, `brillo` y `monedas` multiplican, hasta ×5).
+
+## Funciones sociales (con la sesión iniciada)
+
+- **📣 Avisos de raras:** al encontrar una criatura épica o mejor, pulsa **📣 Avisar** en la captura. A tus amigos
+  cercanos (menos de 3 km) les llega un aviso y la ven en su barra de raras con tu nombre y la zona exacta.
+- **📰 Novedades:** tus momentos destacados (brillantes, capturas épicas o mejores, huevos raros, subir de nivel,
+  barrios que suben) se publican solos y salen en **Jugadores → Novedades**. Un punto rojo en tu nivel avisa de que hay algo nuevo.
+- **🎁 Regalos:** las paradas a veces te dan un regalo (siempre en la primera visita; puedes guardar hasta 10).
+  Solo se pueden **enviar a amigos**: abre su perfil en Jugadores, escribe un mensaje y pulsa Enviar. Cuando te llega
+  uno, tu nivel muestra 🎁; ábrelo en Jugadores y te tocará algo al azar (orbes, todocoins, caramelos… ¡o un huevo!).
+- **❤️ Reacciones:** en el perfil de un amigo puedes reaccionar con ❤️ 🔥 😂 👏 😮 (una por persona). En tu perfil ves las que te han dejado.
+- **🏅 Logros:** 17 medallas que se desbloquean solas (primera captura, 50 capturas, brillante, legendario, 10 km, barrio en Oro, 5 regalos…). Cada una da 15 todocoins y se ve en tu perfil.
+- **🎖️ Títulos:** con logros, niveles, rachas y el reto semanal desbloqueas títulos («Cazador/a», «Leyenda viva», «Racha de fuego 🔥»…). Elige uno en «Editar perfil» y saldrá bajo tu nombre.
+- **📋 Misiones diarias:** botón 📋 abajo a la derecha. 3 misiones cada día, **las mismas para todos los amigos**. Cada una da 10 todocoins y 100 XP; completar las 3 suma un día de **racha 🔥**, y cada 7 días seguidos hay premio (caramelo dorado, 3 ultraorbes y 50 todocoins).
+- **🏆 Reto semanal:** cada semana hay un reto para todos (más capturas, más km, más paradas o más raras). En **Jugadores** ves la clasificación en directo; si llegas a la meta ganas 40 todocoins y 5 superorbes.
+- **📖 Comparar álbumes:** en el perfil de un amigo pulsa «Comparar álbumes»: verás las criaturas en común, las que él tiene y tú no (en silueta) y las que solo tienes tú.
+- **🔄 Intercambios:** en el perfil de un amigo pulsa «Proponer intercambio»: ofreces una criatura repetida (te quedas al menos con una) y pides una de su álbum. Tu amigo la acepta o rechaza en Jugadores (tu nivel muestra 🔄) y el cambio se hace en los dos álbumes.
+- **🫣 Escondites:** en la tarjeta de una criatura repetida pulsa «Esconder una para mis amigos»: se queda escondida donde estás 7 días (máx. 3 a la vez), con una pista. A tus amigos a menos de 3 km les sale en la barra de raras (🫣 @tunombre) con una zona aproximada; al llegar ven un 🫣 en el mapa y quien lo toca se queda una copia (+10 todocoins). Tú ganas 15 todocoins por cada amigo que la encuentre, y en Jugadores ves quién la ha encontrado. Ojo: tus amigos ven el sitio donde la escondes.
+- **💬 Notas en paradas:** al abrir una parada en la que estás puedes dejar una nota para tus amigos («aquí salen muchas de agua», «¡pasad por aquí a las 18:00!»). Una por parada (la nueva sustituye a la anterior, y la puedes borrar con ✕); duran 30 días. Las paradas con notas de amigos llevan un 💬 en el mapa y, al pasar cerca, te avisa.
+- **🧠 ¿Quién es?:** en 📋 → «¿Quién es? del día»: una silueta (la misma para todos) y 4 nombres, con un solo intento. Si aciertas: 20 todocoins, 80 XP y racha de aciertos. Debajo ves qué amigos han acertado hoy. El botón 📋 lleva un 🧠 mientras no hayas jugado.
+- **🏆 Clasificaciones:** en Jugadores, las pestañas de la clasificación ordenan a todos por XP, álbum, km andados, zonas exploradas, brillantes o aciertos del ¿Quién es?
+- **⚔️ Duelos:** en el perfil de un amigo pulsa «Retar a un duelo» y elige 3 criaturas en orden. Tu amigo ve solo de qué rareza son y elige las suyas y su orden; luchan 1ª contra 1ª, 2ª contra 2ª y 3ª contra 3ª. El poder (⚔️) depende de la rareza, de si la tienes brillante y de cuántas copias tienes, más un poco de suerte. Gana quien gane 2 rondas: 25 todocoins y 100 XP (empate 10, perder 5).
+- **👹 Jefe de la semana:** en 📋 o en Jugadores. Un jefe (el mismo para todos) que derrotáis entre todos capturando: cada captura le quita vida según su rareza (las brillantes, el doble). La vida crece con cada amigo que participa. Cuando cae, quien haya hecho al menos 10 de daño reclama una copia del jefe, 50 todocoins y 3 ultraorbes. Cada lunes llega uno nuevo. (Sin sesión iniciada también se puede, tú solo.)
+- **👯 Cazar juntos:** actívalo en Ajustes («Cazar junto a amigos»). Mientras juegas, tus amigos ven solo tu zona aproximada (unos 100 m) y nunca en el mapa. Si un amigo con la opción activada está a menos de 250 m, los dos tenéis XP ×1,5 y el doble de brillantes, y vuestra amistad sube con cada minuto juntos (se ve en su perfil). Al desactivarlo se borra tu zona.
+- **🐾 Criatura compañera:** abre una criatura de tu álbum y pulsa «Hacer compañera». Caminará a tu lado en el mapa y cada km juntas te encontrará algo (caramelos, todocoins, orbes…). Tus amigos la ven en tu perfil.
+- **📸 Modo foto:** en la captura pulsa 📸 para hacer una foto de la criatura (sobre la escena o sobre la cámara) con un marco con su nombre y rareza, y compartirla con tus amigos.
+
+## Editor de criaturas (desde el ordenador)
+
+Abre `https://TU-USUARIO.github.io/fotocaza/criaturas.html` en el ordenador (también hay enlace en **Ajustes** y en
+el editor de paradas). Verás todas las criaturas del repositorio agrupadas por familia, con buscador.
+
+- **Editar una criatura:** haz clic en ella y cambia su **nombre** (con tildes y espacios), **rareza**, **familia**,
+  **etiquetas** (escribe y pulsa Intro: `fuego`, `volador`…) y **descripción**. El archivo no cambia de nombre
+  (así nadie pierde sus capturas): los datos se guardan en `imagenes/criaturas.json`.
+- **Añadir criaturas:** pulsa **Añadir criatura** o arrastra imágenes a la página. Se reducen solas a 600 px
+  (conservando la transparencia) y el editor les pone el nombre de archivo correcto en la carpeta de su familia.
+- **Subirlo:** pulsa **Descargar cambios (ZIP)**, descomprímelo y, en la página principal de tu repositorio,
+  **Add file → Upload files** → arrastra la carpeta **imagenes** que sale del ZIP → **Commit changes**.
+
+El editor recuerda en ese ordenador lo que no hayas descargado. En el juego, las etiquetas y la descripción salen
+en la tarjeta de cada criatura, y en el **álbum** puedes buscar por nombre, familia o etiqueta.
+
 ## Orbes y paradas
 
 Cada lanzamiento gasta un **orbe** (empiezas con 30). Para conseguir más, ve a una **parada** del mapa
@@ -186,32 +291,35 @@ Abre `https://TU-USUARIO.github.io/fotocaza/editor.html` en el ordenador. Tambi�
 El editor recuerda tu trabajo en ese ordenador aunque cierres la pestaña.
 `paradas.json` trae de ejemplo algunas paradas en el centro de Madrid: bórralas o cámbialas a tu gusto.
 
-## Cuentas con Google (guardar la partida en la nube)
+## Cuentas con usuario y contraseña (guardar la partida en la nube)
 
-Opcional. Si lo configuras, en **Ajustes** aparece **Iniciar sesión con Google**: la partida se guarda sola en tu
-cuenta y puedes seguir en otro móvil. Si en el móvil ya había otra partida, el juego pregunta cuál quedarse.
+En **Ajustes → Cuenta** puedes **Crear cuenta** o **Entrar** con un **usuario** y una **contraseña**. Cada usuario
+es único (nadie más puede registrarse con el mismo). La partida se guarda sola en tu cuenta y puedes seguir en otro
+móvil. Si en el móvil ya había otra partida, el juego pregunta cuál quedarse. La contraseña se cambia en
+**Ajustes → 🔑 Contraseña**.
 
-Se usa **Firebase** (de Google, gratis para un proyecto así). Solo se guarda la partida, ligada al identificador
-interno de la cuenta; ni el nombre ni el correo se guardan en la base de datos. Como son datos de compañeros,
-coméntalo antes con el profe.
+- Usuario: de 3 a 20 caracteres, solo letras (a-z), números, «.» y «_» (se guarda en minúsculas).
+- Contraseña: mínimo 6 caracteres. **No hay correo, así que si se olvida no se puede recuperar**: el dueño del
+  proyecto puede borrar esa cuenta en Firebase (**Authentication → Usuarios**) para que vuelva a registrarse.
 
-**Configurarlo (unos 10 minutos):**
+Por dentro se usa **Firebase** (gratis para un proyecto así) con un "correo" interno `usuario@jugadores.fotocaza.app`
+que no existe de verdad. No se guarda ningún dato personal. Como son datos de compañeros, coméntalo antes con el profe.
 
-1. Entra en <https://console.firebase.google.com> con tu cuenta de Google → **Crear un proyecto** (por ejemplo
-   `fotocaza`). Google Analytics no hace falta.
-2. Menú izquierdo → **Authentication** → **Comenzar** → pestaña **Método de acceso** → **Google** → actívalo,
-   elige tu correo de asistencia → **Guardar**.
+**Activarlo en Firebase (una vez):** en la consola de Firebase → **Authentication** → pestaña **Método de acceso** →
+**Agregar proveedor nuevo** → **Correo electrónico/contraseña** → activa el primer interruptor (no el de "vínculo
+del correo") → **Guardar**. Puedes desactivar el proveedor **Google**, ya no se usa.
+
+**Si aún no tienes proyecto de Firebase (unos 10 minutos):**
+
+1. Entra en <https://console.firebase.google.com> → **Crear un proyecto** (por ejemplo `fotocaza`). Analytics no hace falta.
+2. **Authentication** → **Comenzar** → activa **Correo electrónico/contraseña** como se explica arriba.
 3. En **Authentication → Configuración → Dominios autorizados** → **Agregar dominio** → `TU-USUARIO.github.io`.
-4. Menú izquierdo → **Firestore Database** → **Crear base de datos** → ubicación en Europa (por ejemplo `eur3`)
-   → **modo de producción**.
+4. **Firestore Database** → **Crear base de datos** → ubicación en Europa (por ejemplo `eur3`) → **modo de producción**.
 5. En Firestore → pestaña **Reglas** → borra lo que hay, pega el contenido de `firebase-reglas.txt` → **Publicar**.
-6. Rueda ⚙️ → **Configuración del proyecto** → abajo, en **Tus apps**, pulsa el icono web **</>** → ponle un nombre
-   (sin Firebase Hosting) → **Registrar app**. Te enseñará un bloque `firebaseConfig`.
-7. Copia `apiKey`, `authDomain`, `projectId` y `appId` en `config.js`, en el apartado `firebase` (quita las `//`
-   del ejemplo), y sube `config.js` a GitHub.
+6. Rueda ⚙️ → **Configuración del proyecto** → **Tus apps** → icono web **</>** → **Registrar app** y copia
+   `apiKey`, `authDomain`, `projectId` y `appId` en `config.js`, en el apartado `firebase`.
 
-Esos datos **no son secretos** (Firebase está pensado para que vayan en la web): lo que protege las partidas son
-las reglas del paso 5, que solo dejan a cada uno leer y escribir la suya.
+Esos datos **no son secretos**: lo que protege las partidas son las reglas del paso 5.
 
 ### Jugadores (perfiles de amigos)
 
@@ -222,9 +330,9 @@ Con la sesión iniciada, toca tu **nivel** (arriba a la izquierda, el círculo c
 - **Clasificación** de todos los que han iniciado sesión, ordenada por experiencia. Toca a un amigo para ver su perfil.
 
 El perfil (apodo, frase, favoritas y estadísticas) lo puede ver **cualquiera que inicie sesión en el juego**; la partida
-completa sigue siendo privada. Por defecto el apodo es tu nombre de pila de Google: cámbialo si prefieres otro.
+completa sigue siendo privada. Por defecto el apodo es tu nombre de usuario: cámbialo si prefieres otro.
 
-> ⚠️ Si ya configuraste Firebase antes de que existieran los perfiles, **vuelve a pegar las reglas**:
+> ⚠️ Cada vez que se añaden funciones sociales nuevas cambian las reglas. Si ya configuraste Firebase, **vuelve a pegar las reglas**:
 > Firestore → **Reglas** → borra todo → pega el contenido nuevo de `firebase-reglas.txt` → **Publicar**.
 
 ## Ajustes (`config.js`)

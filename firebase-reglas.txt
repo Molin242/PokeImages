@@ -1,21 +1,125 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // La partida de cada jugador: solo la puede leer y escribir él mismo
-    match /jugadores/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+    function signed() { return request.auth != null; }
+    function me() { return request.auth.uid; }
+    function soyAutor() { return signed() && request.resource.data.from == me(); }
+    function texto(campo, max) {
+      return !(campo in request.resource.data) || (request.resource.data[campo] is string && request.resource.data[campo].size() <= max);
     }
 
-    // Perfiles: cualquiera que haya iniciado sesión los puede ver; cada uno solo edita el suyo
+    // La partida de cada jugador: solo la puede leer y escribir él mismo
+    match /jugadores/{uid} {
+      allow read, write: if signed() && me() == uid;
+    }
+
+    // Perfiles: los ve cualquiera con sesión; cada uno solo edita el suyo
     match /perfiles/{uid} {
-      allow read: if request.auth != null;
-      allow delete: if request.auth != null && request.auth.uid == uid;
-      allow create, update: if request.auth != null && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['nick', 'bio', 'favs', 'stats', 'creado', 'updated'])
+      allow read: if signed();
+      allow delete: if signed() && me() == uid;
+      allow create, update: if signed() && me() == uid
+        && request.resource.data.keys().hasOnly(['nick', 'bio', 'favs', 'stats', 'creado', 'updated', 'titulo', 'logros'])
         && request.resource.data.nick is string
         && request.resource.data.nick.size() > 0 && request.resource.data.nick.size() <= 24
-        && (!('bio' in request.resource.data) || (request.resource.data.bio is string && request.resource.data.bio.size() <= 140))
+        && texto('bio', 140) && texto('titulo', 40)
         && (!('favs' in request.resource.data) || (request.resource.data.favs is list && request.resource.data.favs.size() <= 3));
+    }
+
+    // Avisos de criaturas raras ("¡he visto un legendario aquí!") y muro de actividad
+    match /avisos/{id} {
+      allow read: if signed();
+      allow create: if soyAutor() && texto('nick', 24) && texto('texto', 140);
+      allow delete: if signed() && resource.data.from == me();
+    }
+    match /actividad/{id} {
+      allow read: if signed();
+      allow create: if soyAutor() && texto('nick', 24) && texto('texto', 140);
+      allow delete: if signed() && resource.data.from == me();
+    }
+
+    // Reacciones a perfiles (❤️ 🔥 😂 👏): una por persona y perfil, id = destino_origen
+    match /reacciones/{id} {
+      allow read: if signed();
+      allow create, update: if soyAutor() && id == request.resource.data.to + '_' + me()
+        && request.resource.data.emoji is string && request.resource.data.emoji.size() <= 8;
+      allow delete: if signed() && resource.data.from == me();
+    }
+
+    // Regalos: los ven quien envía y quien recibe; solo quien recibe puede abrirlos o borrarlos
+    match /regalos/{id} {
+      allow read: if signed() && (resource.data.to == me() || resource.data.from == me());
+      allow create: if soyAutor() && request.resource.data.to is string && request.resource.data.to != me()
+        && texto('nick', 24) && texto('mensaje', 100);
+      allow update: if signed() && resource.data.to == me()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['abierto']);
+      allow delete: if signed() && resource.data.to == me();
+    }
+
+    // Intercambios de criaturas entre amigos
+    match /intercambios/{id} {
+      allow read: if signed() && (resource.data.to == me() || resource.data.from == me());
+      allow create: if soyAutor() && request.resource.data.to is string && request.resource.data.to != me()
+        && request.resource.data.estado == 'pendiente';
+      allow update: if signed() && (resource.data.to == me() || resource.data.from == me())
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'aplicado']);
+      allow delete: if signed() && (resource.data.to == me() || resource.data.from == me());
+    }
+
+    // Escondites: criaturas que un amigo esconde en el mapa; las ven todos, solo el autor las borra
+    match /escondites/{id} {
+      allow read: if signed();
+      allow create: if soyAutor() && texto('nick', 24) && texto('pista', 80)
+        && request.resource.data.lat is number && request.resource.data.lng is number;
+      allow delete: if signed() && resource.data.from == me();
+    }
+    // Hallazgos: "he encontrado tu escondite" (uno por persona y escondite, id = escondite_quien)
+    match /hallazgos/{id} {
+      allow read: if signed() && (resource.data.to == me() || resource.data.from == me());
+      allow create: if soyAutor() && id == request.resource.data.esc + '_' + me()
+        && request.resource.data.to is string && request.resource.data.to != me() && texto('nick', 24);
+      allow delete: if signed() && (resource.data.to == me() || resource.data.from == me());
+    }
+
+    // Notas en paradas: una por persona y parada (id = parada_quien); las leen todos, solo el autor las cambia o borra
+    match /notas/{id} {
+      allow read: if signed();
+      allow create, update: if soyAutor() && request.resource.data.stop is string
+        && id == request.resource.data.stop + '_' + me()
+        && request.resource.data.texto is string && request.resource.data.texto.size() > 0
+        && request.resource.data.texto.size() <= 100 && texto('nick', 24) && texto('nombre', 60);
+      allow delete: if signed() && resource.data.from == me();
+    }
+
+    // Duelos entre amigos: quien reta crea el duelo; solo el retado puede luchar (añadir su equipo)
+    match /duelos/{id} {
+      allow read: if signed() && (resource.data.to == me() || resource.data.from == me());
+      allow create: if soyAutor() && request.resource.data.to is string && request.resource.data.to != me()
+        && request.resource.data.estado == 'pendiente' && texto('nick', 24) && texto('toNick', 24)
+        && request.resource.data.equipo is list && request.resource.data.equipo.size() == 3;
+      allow update: if signed() && resource.data.to == me()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'equipo2', 'poder2', 'ganador', 'nick2']);
+      allow delete: if signed() && (resource.data.to == me() || resource.data.from == me());
+    }
+
+    // Cazar juntos: cada uno publica solo su zona aproximada (si lo activa en Ajustes); id = su uid
+    match /presencia/{uid} {
+      allow read: if signed();
+      allow create, update: if signed() && me() == uid && request.resource.data.from == me()
+        && request.resource.data.lat is number && request.resource.data.lng is number && texto('nick', 24);
+      allow delete: if signed() && me() == uid;
+    }
+
+    // Quimeras: criaturas inventadas (imagen pequeña); los amigos solo pueden cambiar los votos y solo el suyo
+    match /quimeras/{id} {
+      allow read: if signed();
+      allow create: if soyAutor() && texto('nombre', 24) && texto('nick', 24)
+        && request.resource.data.img is string && request.resource.data.img.size() < 90000
+        && request.resource.data.votos is list && request.resource.data.votos.size() == 0;
+      allow update: if signed() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votos'])
+        && request.resource.data.votos is list
+        && request.resource.data.votos.toSet().difference(resource.data.votos.toSet()).hasOnly([me()])
+        && resource.data.votos.toSet().difference(request.resource.data.votos.toSet()).hasOnly([me()]);
+      allow delete: if signed() && resource.data.from == me();
     }
 
     // Todo lo demás, cerrado

@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FotoCaza · Resumen del modo automático</title>
+<style>
+:root { --glass: rgba(255,255,255,.42); --edge: rgba(255,255,255,.75); --ink: #14182b; --sub: #4b5470; --accent: #2f6bff; }
+* { box-sizing: border-box; }
+body { margin: 0; font: 16px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif; color: var(--ink); min-height: 100vh;
+  background: radial-gradient(1200px 700px at 10% -10%, #9ec5ff 0%, transparent 60%), radial-gradient(900px 600px at 110% 10%, #ffb3d9 0%, transparent 55%),
+  radial-gradient(900px 700px at 50% 120%, #b9f5d8 0%, transparent 60%), #eef2fb; background-attachment: fixed; }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 32px 18px 60px; }
+.glass { background: var(--glass); border: 1px solid var(--edge); border-radius: 26px; backdrop-filter: blur(22px) saturate(1.6);
+  -webkit-backdrop-filter: blur(22px) saturate(1.6); box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 12px 40px rgba(30,40,90,.12); }
+header.hero { padding: 34px 28px; text-align: center; margin-bottom: 22px; }
+.hero .logo { font-size: 54px; line-height: 1; }
+.hero h1 { margin: 8px 0 4px; font-size: clamp(30px, 6vw, 46px); letter-spacing: -.03em; }
+.hero p { margin: 0 auto; max-width: 640px; color: var(--sub); }
+.stats { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 18px; }
+.stats div { padding: 10px 16px; border-radius: 18px; background: rgba(255,255,255,.55); border: 1px solid var(--edge); }
+.stats b { display: block; font-size: 24px; } .stats small { color: var(--sub); }
+.todo { padding: 24px; margin-bottom: 26px; border-color: rgba(255,159,10,.7); }
+.todo h2 { margin: 0 0 10px; }
+.todo ol { margin: 0; padding-left: 22px; } .todo li { margin: 8px 0; }
+.todo code, li code, p code { background: rgba(255,255,255,.7); padding: 1px 6px; border-radius: 6px; font-size: 14px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.chips span { font: 13px ui-monospace, monospace; padding: 3px 9px; border-radius: 999px; background: rgba(47,107,255,.12); }
+.grupo h2 { font-size: 24px; margin: 30px 4px 12px; letter-spacing: -.02em; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.f { padding: 16px 16px 14px; border-radius: 22px; transition: transform .2s; }
+.f:hover { transform: translateY(-3px); }
+.f i { font-style: normal; font-size: 28px; }
+.f h3 { margin: 6px 0 4px; font-size: 17px; }
+.f p { margin: 0; color: var(--sub); font-size: 14px; }
+.timeline { padding: 22px 24px; margin-top: 30px; }
+.timeline h2 { margin: 0 0 12px; }
+.timeline ol { list-style: none; margin: 0; padding: 0; border-left: 3px solid rgba(47,107,255,.35); }
+.timeline li { position: relative; padding: 0 0 14px 18px; }
+.timeline li::before { content: ''; position: absolute; left: -8px; top: 6px; width: 13px; height: 13px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 4px rgba(255,255,255,.8); }
+.timeline time { font-weight: 800; color: var(--accent); font-size: 14px; }
+.timeline p { margin: 2px 0 0; font-size: 15px; }
+.notas { padding: 22px 24px; margin-top: 26px; } .notas h2 { margin: 0 0 8px; } .notas li { margin: 6px 0; }
+footer { text-align: center; color: var(--sub); font-size: 13px; margin-top: 30px; }
+@media (prefers-color-scheme: dark) {
+  :root { --glass: rgba(30,36,60,.5); --edge: rgba(255,255,255,.16); --ink: #eef1ff; --sub: #aab3d1; --accent: #7aa2ff; }
+  body { background: radial-gradient(1200px 700px at 10% -10%, #233a7a 0%, transparent 60%), radial-gradient(900px 600px at 110% 10%, #5a2350 0%, transparent 55%), #0d1122; }
+  .stats div, .todo code, li code, p code { background: rgba(255,255,255,.08); }
+  .glass { box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 12px 40px rgba(0,0,0,.35); }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero glass">
+    <div class="logo">📸</div>
+    <h1>FotoCaza</h1>
+    <p>Resumen del <b>modo automático</b> del 27/11/2026 (de 20:28 a 21:33): todo lo que se ha añadido para que el juego
+      sea más social y divertido, y lo que tienes que hacer para ponerlo en marcha.</p>
+    <div class="stats">
+      <div><b>30</b><small>mejoras</small></div>
+      <div><b>27</b><small>funciones nuevas</small></div>
+      <div><b>13</b><small>colecciones en Firebase</small></div>
+    </div>
+  </header>
+
+  <section class="todo glass">
+    <h2>⚠️ Lo que tienes que hacer tú</h2>
+    <ol>
+      <li><b>Sube los archivos nuevos a GitHub</b> (sustituye los que había): <code>index.html</code>, <code>app.js</code>,
+        <code>style.css</code>, <code>cloud.js</code>, <code>osm.js</code>, <code>config.js</code>, <code>sw.js</code>,
+        <code>eventos.json</code>, <code>README.md</code> y <code>firebase-reglas.txt</code>. <b>No subas</b>
+        <code>imagenes/lista.json</code> (es solo para probar en el ordenador).</li>
+      <li><b>Activa el usuario y contraseña en Firebase:</b> consola de Firebase → <b>Authentication</b> → <b>Método de acceso</b>
+        → <b>Agregar proveedor nuevo</b> → <b>Correo electrónico/contraseña</b> → activa el primer interruptor → <b>Guardar</b>.
+        (El proveedor de Google ya no se usa.)</li>
+      <li><b>Pega las reglas nuevas:</b> <b>Firestore Database → Reglas</b> → borra todo → pega el contenido de
+        <code>firebase-reglas.txt</code> → <b>Publicar</b>. Sin esto, las funciones con amigos no funcionan. Cubren:
+        <div class="chips"><span>jugadores</span><span>perfiles</span><span>avisos</span><span>actividad</span><span>reacciones</span><span>regalos</span><span>intercambios</span><span>escondites</span><span>hallazgos</span><span>notas</span><span>duelos</span><span>presencia</span><span>quimeras</span></div></li>
+      <li>Comprueba en <b>Authentication → Configuración → Dominios autorizados</b> que está <code>TU-USUARIO.github.io</code>.</li>
+      <li>Dile a tus amigos que creen su cuenta en <b>Ajustes → Cuenta</b> (usuario y contraseña; si se olvida, no se puede recuperar).</li>
+    </ol>
+  </section>
+
+  <section class="grupo"><h2><span>👥</span> Con tus amigos</h2><div class="cards"><article class="glass f"><i>📣</i><h3>Avisos de raras</h3><p>Avisa de una épica o mejor y a tus amigos cercanos les sale en la barra de raras con la zona exacta.</p></article><article class="glass f"><i>📰</i><h3>Novedades</h3><p>Muro con lo mejor de cada uno: capturas raras, logros, duelos, quimeras…</p></article><article class="glass f"><i>🎁</i><h3>Regalos</h3><p>Las paradas dan regalos que solo puedes enviar a amigos, con mensaje.</p></article><article class="glass f"><i>❤️</i><h3>Reacciones</h3><p>Reacciona al perfil de tus amigos con ❤️ 🔥 😂 👏 😮.</p></article><article class="glass f"><i>🔄</i><h3>Intercambios</h3><p>Cambia una repetida por una del álbum de un amigo.</p></article><article class="glass f"><i>📖</i><h3>Comparar álbumes</h3><p>Mira qué tiene tu amigo que tú no (en silueta).</p></article><article class="glass f"><i>🫣</i><h3>Escondites</h3><p>Esconde una criatura en el mapa con una pista para que la busquen.</p></article><article class="glass f"><i>💬</i><h3>Notas en paradas</h3><p>Deja mensajes en las paradas que tus amigos leen al pasar.</p></article><article class="glass f"><i>⚔️</i><h3>Duelos</h3><p>Equipos de 3 en orden; tu amigo solo ve la rareza de las tuyas. ¡Estrategia!</p></article><article class="glass f"><i>👯</i><h3>Cazar juntos</h3><p>Si un amigo juega cerca: XP ×1,5 y doble de brillantes, y sube vuestra amistad (opcional).</p></article><article class="glass f"><i>🧬</i><h3>Quimeras</h3><p>Mezcla dos criaturas en una nueva; la galería vota la quimera de la semana.</p></article><article class="glass f"><i>🏆</i><h3>Clasificaciones</h3><p>XP, álbum, km, exploración, brillantes, ¿Quién es?, combo y duelos.</p></article><article class="glass f"><i>🏅</i><h3>Logros y títulos</h3><p>Medallas visibles en el perfil y títulos para lucir bajo tu nombre.</p></article></div></section><section class="grupo"><h2><span>📅</span> Cada día y cada semana</h2><div class="cards"><article class="glass f"><i>📋</i><h3>Misiones diarias</h3><p>3 misiones iguales para todos, racha 🔥 y premio cada 7 días.</p></article><article class="glass f"><i>🧠</i><h3>¿Quién es?</h3><p>Adivina la silueta del día (un intento) y mira quién ha acertado.</p></article><article class="glass f"><i>🎨</i><h3>Caza de color</h3><p>Haz una foto real de algo del color del día e invoca una criatura de ese color.</p></article><article class="glass f"><i>👹</i><h3>Jefe de la semana</h3><p>Lo derrotáis entre todos capturando; quien ayuda se lo lleva.</p></article><article class="glass f"><i>🏁</i><h3>Reto semanal</h3><p>Competición de la semana con clasificación y premio.</p></article><article class="glass f"><i>🎉</i><h3>Eventos</h3><p>Hora feliz, fin de semana brillante, familia de la semana y los vuestros en eventos.json.</p></article><article class="glass f"><i>🌅</i><h3>Hora dorada</h3><p>En el amanecer y el atardecer reales: mapa dorado, XP ×2 y más brillantes.</p></article></div></section><section class="grupo"><h2><span>🗺️</span> Explorar y cazar</h2><div class="cards"><article class="glass f"><i>📡</i><h3>Sensor de ocultas</h3><p>Criaturas invisibles que solo encuentras andando: el móvil vibra más cuanto más cerca.</p></article><article class="glass f"><i>🌫️</i><h3>Niebla de exploración</h3><p>El mapa se despeja por donde pasas.</p></article><article class="glass f"><i>⚡</i><h3>Combo de capturas</h3><p>Captura seguido (menos de 3 min) y la XP sube hasta +90 %.</p></article><article class="glass f"><i>🌦️</i><h3>Clima y noche reales</h3><p>La lluvia, el sol o la noche cambian qué criaturas salen.</p></article><article class="glass f"><i>🐾</i><h3>Compañera</h3><p>Una criatura camina contigo y encuentra regalos cada km.</p></article><article class="glass f"><i>📸</i><h3>Modo foto</h3><p>Foto de la criatura en la escena para compartir.</p></article><article class="glass f"><i>👋</i><h3>Bienvenida</h3><p>Guía para jugadores nuevos con 5 superorbes de regalo.</p></article></div></section>
+
+  <section class="timeline glass">
+    <h2>🕒 Paso a paso</h2>
+    <ol><li><time>20:28</time><p>Cuentas con <b>usuario y contraseña únicos</b> en lugar de Google (crear cuenta, entrar, cambiar contraseña).</p></li>
+<li><time>20:40</time><p><b>Reglas de Firebase para lo social</b> (avisos, actividad, reacciones, regalos, intercambios, títulos y logros en el perfil) y funciones comunes en <code>cloud.js</code>. ⚠️ Hay que volver a pegar <code>firebase-reglas.txt</code> en Firestore → Reglas → Publicar.</p></li>
+<li><time>20:36</time><p><b>Avisos de raras a los amigos</b>: en la captura de una épica o mejor aparece 📣 Avisar; a los amigos (a menos de 3 km) les llega una notificación y les sale en la barra de raras con tu nombre y la zona exacta (60 m) hasta que cambian las apariciones.</p></li>
+<li><time>20:37</time><p><b>Muro de novedades</b>: se publican solos los momentos destacados (capturas brillantes o épicas+, huevos raros, subir de nivel, barrios que suben, avisos) y salen en Jugadores → Novedades; punto rojo en el nivel cuando hay algo nuevo.</p></li>
+<li><time>20:38</time><p><b>Regalos entre amigos</b>: las paradas dan 🎁 (35 %, siempre en la primera visita, máx. 10); se envían desde el perfil de un amigo con un mensaje; quien lo recibe lo abre en Jugadores y le tocan orbes, todocoins, caramelos, superorbes o un huevo raro.</p></li>
+<li><time>20:39</time><p><b>Reacciones en perfiles</b>: ❤️ 🔥 😂 👏 😮 en el perfil de cada amigo (una por persona, se puede cambiar o quitar); tu perfil muestra las que has recibido.</p></li>
+<li><time>20:41</time><p><b>Logros y medallas</b>: 17 logros (capturas, colección, brillantes, km, paradas, huevos, barrios, regalos, avisos…); cada uno da 15 todocoins, sale en las novedades y se ve como medalla en el perfil (los tuyos con los bloqueados en gris).</p></li>
+<li><time>20:42</time><p><b>Misiones diarias</b>: botón 📋 (abajo a la derecha) con 3 misiones al día iguales para todos los amigos (capturar, andar, paradas, curvas, «Excelente», regalos, reacciones…); cada una da 10 todocoins y 100 XP; completar las 3 suma racha 🔥 y cada 7 días seguidos hay premio gordo.</p></li>
+<li><time>20:43</time><p><b>Reto semanal</b>: cada semana un reto igual para todos (más capturas, km, paradas o raras) con clasificación en directo en Jugadores y premio por llegar a la meta (40 todocoins + 5 superorbes); sale en las novedades.</p></li>
+<li><time>20:44</time><p><b>Comparar álbumes</b>: en el perfil de un amigo, «📖 Comparar álbumes» muestra cuántas tenéis en común, las que él tiene y tú no (en silueta, para saber qué buscar) y las que tú tienes y él no.</p></li>
+<li><time>20:45</time><p><b>Criatura compañera</b>: desde su tarjeta del álbum («🐾 Hacer compañera») camina a tu lado en el mapa; cada km juntas encuentra caramelos, todocoins, orbes o un caramelo dorado; sale en tu perfil para tus amigos.</p></li>
+<li><time>20:46</time><p><b>Clima y hora reales</b> (Open-Meteo, sin claves): el tiempo sale arriba (☀️ 🌧️ ❄️ 🌙…); según llueva, haga sol, nieve, niebla, viento o sea de noche salen el triple las criaturas con esas etiquetas (#lluvia, #agua, #sol, #fuego, #noche, #fantasma…); de noche el mapa se oscurece y las épicas o mejores salen un 50 % más.</p></li>
+<li><time>20:47</time><p><b>Modo foto</b>: botón 📸 en la captura; hace una foto de la criatura en la escena (o sobre la cámara), con marco de nombre, rareza y fecha; en el móvil se comparte directamente (WhatsApp…), en el ordenador se descarga.</p></li>
+<li><time>20:48</time><p><b>Intercambios</b>: desde el perfil de un amigo, «🔄 Proponer intercambio» (ofreces una repetida y pides una de su álbum); tu amigo la acepta o rechaza en Jugadores y los dos álbumes se actualizan; sale en las novedades.</p></li>
+<li><time>20:50</time><p><b>Eventos</b>: automáticos (⏰ hora feliz 18–19 h con doble XP y todocoins, ✨ fin de semana brillante ×3, ⭐ familia de la semana ×3) y propios en <code>eventos.json</code> (fechas, familia o etiqueta, XP, brillo, monedas); se ven en 📋 y avisan al empezar.</p></li>
+<li><time>20:51</time><p><b>Títulos</b>: 16 títulos que se desbloquean con logros, niveles, rachas y el reto semanal; se eligen en «Editar perfil» y salen bajo tu nombre en el perfil y en la clasificación.</p></li>
+<li><time>20:52</time><p><b>Bienvenida</b>: 6 pantallas que explican el juego la primera vez (explorar, capturar, paradas, amigos, misiones) y regalan 5 superorbes; se puede volver a ver desde Ajustes.</p></li>
+<li><time>20:57</time><p><b>Niebla de exploración</b>: el mapa está cubierto de niebla y se despeja (≈70 m) por donde pasas; las zonas exploradas se guardan, salen en tu perfil («🌫️ Zonas exploradas») y se puede quitar en Ajustes.</p></li>
+<li><time>20:58</time><p><b>Escondites</b>: desde la tarjeta de una criatura repetida, «🫣 Esconder una para mis amigos» la deja escondida donde estás 7 días, con una pista. A tus amigos (a menos de 3 km) les sale en la barra de raras con una zona aproximada; al llegar aparece un 🫣 en el mapa y quien lo toca se queda una copia (+10 todocoins). Tú ganas 15 todocoins por cada amigo que la encuentre. Logro nuevo «Buscatesoros». ⚠️ Reglas de Firebase nuevas (<code>escondites</code> y <code>hallazgos</code>). Arreglado también el «?» de la barra de raras, que a veces salía enorme.</p></li>
+<li><time>21:00</time><p><b>Notas en paradas</b>: estando en una parada puedes dejar una nota (máx. 100 letras, una por parada; la nueva sustituye a la anterior y se puede borrar). Tus amigos la leen al abrir la parada, las paradas con notas llevan un 💬 en el mapa y, al pasar cerca, avisa. Duran 30 días y salen en las novedades. ⚠️ Reglas de Firebase nuevas (<code>notas</code>).</p></li>
+<li><time>21:02</time><p><b>¿Quién es?</b>: minijuego diario en 📋 (el botón lleva un 🧠 si aún no has jugado). La misma silueta para todos y 4 nombres (los despistes, de la misma familia); un solo intento. Acertar da 20 todocoins y 80 XP, suma racha de aciertos y sale en las novedades; ves qué amigos han acertado hoy (sin desvelar la respuesta). Logro nuevo «Cerebrito» (7 aciertos).</p></li>
+<li><time>21:04</time><p><b>Clasificación por categorías</b>: en Jugadores, pestañas para ordenar a los amigos por ⭐ XP, 📖 álbum, 👟 km, 🌫️ exploración, ✨ brillantes o 🧠 aciertos del ¿Quién es? (se recuerda la última elegida).</p></li>
+<li><time>21:06</time><p><b>Duelos</b>: desde el perfil de un amigo, «⚔️ Retar a un duelo» con un equipo de 3 criaturas en orden. Tu amigo solo ve la rareza de las tuyas y elige su equipo y su orden (¡estrategia!); se enfrentan 1ª–1ª, 2ª–2ª y 3ª–3ª con poder según rareza, brillante y copias, más algo de suerte igual en los dos móviles. Ganar da 25 todocoins y 100 XP (empate 10, perder 5); resultado animado para los dos, sale en las novedades, nueva pestaña ⚔️ en la clasificación y logro «Gladiador» (5 victorias). ⚠️ Reglas de Firebase nuevas (<code>duelos</code>).</p></li>
+<li><time>21:09</time><p><b>Jefe de la semana</b> (cooperativo): cada semana un jefe legendario o mejor, el mismo para todos y en silueta hasta que cae. Cada captura le quita vida según su rareza (brillantes ×2) y el daño se suma entre todos los amigos; la vida crece con cada jugador que se une. Al caer, quien haya hecho al menos 10 de daño reclama el premio: una copia del jefe, 50 todocoins y 3 ultraorbes. Se ve en 📋 y en Jugadores, sale en las novedades y hay logro «Matajefes». Sin reglas nuevas (va en el perfil). Arreglados también los rótulos de colores de escondites y jefe en la tarjeta.</p></li>
+<li><time>21:15</time><p><b>Sensor de criaturas ocultas</b> (petición del usuario): hay criaturas ocultas (más raras: la mejor de dos tiradas) que no salen ni en el mapa ni en la barra de raras. Solo mientras andas, el sensor 📡 vibra (y pita, y el icono late) más deprisa y más fuerte cuanto más cerca estás, desde 150 m, sin flechas ni distancias. A 25 m la encuentras y empieza la captura. Salen en las novedades, cuentan en el perfil y hay logro «Zahorí» (5 ocultas). En iPhone el navegador no deja vibrar: allí avisa con el pitido y el 📡.</p></li>
+<li><time>21:18</time><p><b>Cazar juntos</b>: opción en Ajustes (desactivada de entrada). Mientras juegas, tus amigos saben tu zona aproximada (~100 m); si hay un amigo a menos de 250 m, los dos tenéis XP ×1,5 y el doble de brillantes (sale como evento «👯 Cazando juntos» en 📋 y con 👯 arriba). Cada minuto juntos sube la amistad (Amigos → Buenos → Grandes → Mejores amigos), que se ve en su perfil; sale en las novedades y hay logro «La pandilla» (60 min). Al desactivarlo se borra tu zona. ⚠️ Reglas de Firebase nuevas (<code>presencia</code>).</p></li>
+<li><time>21:22</time><p><b>Combo de capturas</b>: cada captura a menos de 3 minutos de la anterior sube el combo (hasta ×10) y da +10 % de XP por paso; si una criatura huye, se pierde. Contador ⚡ ×N con cuenta atrás encima de la barra de abajo. El récord sale en el perfil, en una pestaña nueva ⚡ de la clasificación y en las novedades (desde ×5); logro «Imparable» (×10).</p></li>
+<li><time>21:26</time><p><b>🎨 Caza de color</b> (idea original, petición «algo distinto»): cada día un color, el mismo para todos. Haces una foto a algo real de ese color y el juego analiza en el propio móvil (la foto no se sube) el color dominante; si acierta, invoca una criatura cuya imagen es de ese color (las raras pesan más) y empieza la captura. 3 intentos al día, una invocación. Se ve qué amigos lo han conseguido, sale en las novedades y hay logro «Ojo de pintor» (5 cazas). Está en 📋.</p></li>
+<li><time>21:30</time><p><b>🧬 Quimeras</b> (idea original): en el álbum, botón 🧬. Eliges dos criaturas tuyas y un corte (vertical u horizontal), ves la mezcla en directo y nace una criatura nueva con nombre mezclado (editable) por 25 todocoins. Se guardan en tu colección de quimeras y, con sesión iniciada, se comparten: galería de los amigos con votos ❤️ (uno por persona, no a las tuyas) y «👑 Quimera de la semana». Sale en las novedades; logro «Científico loco» (3 quimeras). ⚠️ Reglas de Firebase nuevas (<code>quimeras</code>).</p></li>
+<li><time>21:32</time><p><b>🌅 Hora dorada</b>: el juego calcula el amanecer y el atardecer reales de tu zona (con precisión de minutos). De 10 min antes a 30 min después del amanecer, y de 30 min antes a 10 min después del atardecer: el mapa se vuelve dorado y hay XP ×2 y el doble de brillantes (evento en 📋, igual para todos los amigos de la ciudad).</p></li></ol>
+  </section>
+
+  <section class="notas glass">
+    <h2>📝 Notas</h2>
+    <ul>
+      <li>Copia de seguridad de antes del modo automático: <code>Escritorio\FotoCaza-copia-antes-modo-auto</code>.
+        Las imágenes originales grandes están en <code>Escritorio\FotoCaza-imagenes-originales</code>.</li>
+      <li>Todo se probó en el ordenador con una cuenta simulada (sin crear cuentas reales). Tras subirlo, haced una prueba
+        rápida entre dos móviles: crear cuenta, enviar un regalo y un duelo.</li>
+      <li>Para la <b>Caza de color</b> conviene subir criaturas de colores variados: ahora casi todas son naranjas o rojas
+        y apenas hay moradas, verdes o turquesas.</li>
+      <li>En iPhone el navegador no permite vibrar: el sensor de ocultas avisa también con un pitido y con el icono 📡.</li>
+      <li>Todos los detalles de cada función están en el <code>README.md</code>.</li>
+    </ul>
+  </section>
+  <footer>FotoCaza · hecho con 💙 para jugar con amigos</footer>
+</div>
+</body>
+</html>
